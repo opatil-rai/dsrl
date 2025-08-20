@@ -11,8 +11,8 @@ from stable_baselines3.common.vec_env import VecEnvWrapper
 import json
 
 from dppo.env.gym_utils.wrapper import wrapper_dict
-import robomimic.utils.env_utils as EnvUtils
-import robomimic.utils.obs_utils as ObsUtils
+# import robomimic.utils.env_utils as EnvUtils
+# import robomimic.utils.obs_utils as ObsUtils
 
 
 def make_robomimic_env(render=False, env='square', normalization_path=None, low_dim_keys=None, dppo_path=None):

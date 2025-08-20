@@ -8,8 +8,7 @@ import wandb
 import numpy as np
 import hydra
 from omegaconf import OmegaConf
-import gym, d4rl
-import d4rl.gym_mujoco
+import gym
 import sys
 sys.path.append('./dppo')
  
