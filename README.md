@@ -20,15 +20,27 @@ Diffusion steering via reinforcement learning (DSRL) is a lightweight and effici
 ## Installation
 1. Clone repository
 ```
-git clone --recurse-submodules git@github.com:ajwagen/dsrl.git
+git clone --recurse-submodules git@github.com:erosen-bdai/dsrl.git
 cd dsrl
 ```
 2. Create conda environment
 ```
-conda create -n dsrl python=3.9 -y
+conda create -n dsrl python=3.10 -y
 conda activate dsrl
 ```
-3. Install our fork of DPPO 
+3. Install dsrl dependencies
+```
+python -m pip install gymnasium[other]==1.2.0
+python -m pip install gymnasium-robotics
+python -m pip install -e .
+```
+4. Install our fork of Stable Baselines3
+```
+cd stable-baselines3
+python -m pip install -e .
+cd ..
+```
+5. (Optional, don't currently recommend) Install our fork of DPPO 
 ```
 cd dppo
 pip install -e .
@@ -36,12 +48,44 @@ pip install -e .[robomimic]
 pip install -e .[gym]
 cd ..
 ```
-4. Install our fork of Stable Baselines3
+
+## Possible issues
+### Mujoco
+If you run into rendering issues with mujoco e.g: 
 ```
-cd stable-baselines3
-pip install -e .
-cd ..
+
+libGL error: MESA-LOADER: failed to open swrast: /usr/lib/dri/swrast_dri.so: cannot open shared object file: No such file or directory (search paths /usr/lib/x86_64-linux-gnu/dri:\$${ORIGIN}/dri:/usr/lib/dri, suffix _dri)
+libGL error: failed to load driver: swrast
+/home/erosen_theaiinstitute_com/.local/lib/python3.10/site-packages/glfw/__init__.py:917: GLFWError: (65543) b'GLX: Failed to create context: BadValue (integer parameter out of range for operation)'
+  warnings.warn(message, GLFWError)
+...
+mujoco.FatalError: gladLoadGL error
 ```
+
+try
+```
+export MUJOCO_GL=egl
+```
+
+### Fetch
+You may need to set your `LD_LIBRARY_PATH` like so:
+```
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/nvidia
+```
+
+### Gymnasium version
+We use `gymnasium==1.2.0`. If you install something that sets it to an earlier version, you may get an issue like 
+
+```
+ImportError: cannot import name 'FrameStackObservation' from 'gymnasium.wrappers' (/home/erosen_theaiinstitute_com/miniconda3/envs/dsrl_sb5/lib/python3.10/site-packages/gymnasium/wrappers/__init__.py)
+```
+
+Simply reinstall gymnasium to the desired version:
+```
+python -m pip install gymnasium==1.2.0
+```
+
+## Extra
 The diffusion policy checkpoints for the Robomimic and Gym experiments can be found [here](https://drive.google.com/drive/folders/1kzC49RRFOE7aTnJh_7OvJ1K5XaDmtuh1?usp=share_link). Download the contents of this folder and place in `./dppo/log`.
 
 ## Running DSRL
