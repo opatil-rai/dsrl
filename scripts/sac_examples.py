@@ -232,6 +232,8 @@ class RewardAsPotentialWrapper(gym.Wrapper):
 def task_import(task):
     if task == "pusht":
         import gym_pusht
+    elif task =="pusht_latent":
+        import gym_pusht
     elif task == "gym_hil":
         import gym_hil
     elif "fetch" in task:
@@ -252,6 +254,11 @@ cfgs = {
         "pusht":{
             "policy": "MlpPolicy",
             "learning_rate": 0.001,
+        },
+        "pusht_latent":
+        {
+            "policy": "MlpPolicy",
+            "learning_rate":0.001
         },
         "gym_hil":{
             "policy": "MlpPolicy",
@@ -292,6 +299,9 @@ cfgs = {
             "total_timesteps": 1e6,
             "env_name": "gym_pusht/PushT-v0",
         },
+        "pusht_latent":{
+            "total_timesteps": 1e6,
+        },
         "gym_hil":{
             "total_timesteps": 1e6,
             "env_name": "gym_hil/PandaPickCubeBase-v0",
@@ -308,7 +318,7 @@ cfgs = {
 
 }
 
-task = "gym_hil"
+task = "pusht_latent"
 task_import(task)
 sac_config = cfgs["sac"][task]
 other_config = cfgs["other"][task]
@@ -324,7 +334,7 @@ run = wandb.init(
 
 def make_env(video_folder, record_trigger):
     # ObservationAction Normalizing wrapper
-    if task in ["pusht"]:
+    if task == "pusht":
         env = gym.make(other_config["env_name"],render_mode="rgb_array")
 
         obs_min = np.ones([5])*-1
@@ -344,6 +354,28 @@ def make_env(video_folder, record_trigger):
         env = FrameStackObservation(env, stack_size=2)
         # time limit
         env = TimeLimit(env, max_episode_steps=100)
+    elif task == "pusht_latent":
+        # Check device is available
+        device = "cuda"
+        # Reset env, save specific state
+        # 1) Set to specific state
+        reset_state = np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])
+        options = {"reset_to_state": reset_state}
+        # 2) Set to random state
+        # options = None # No hard-coded reset state
+
+        # Random seed
+        # 1) Set the seed manually
+        gym_reset_seed = 1234522325 # or None for no fixed seed
+        # 2) Or set no random seed
+        # gym_reset_seed = None
+        from lerobot_dsrl import generate_steerable_diffpo_pusht_gym_env
+        env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed)
+        action_min = np.ones([32])*-1
+        action_max = np.ones([32])
+        # linearlly normalize obs/action to [-1,1]
+        env = RescaleAction(env, min_action=action_min, max_action=action_max)
+        env = TimeLimit(env, max_episode_steps=10)
     elif "fetch" in task:
         env = gym.make(other_config["env_name"],render_mode="rgb_array", max_episode_steps=100)
         env = FlattenObservation(env)
