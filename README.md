@@ -28,17 +28,18 @@ cd dsrl
 conda create -n dsrl python=3.10 -y
 conda activate dsrl
 ```
-3. Install dsrl dependencies
-```
-python -m pip install gymnasium[other]==1.2.0
-python -m pip install gymnasium-robotics
-python -m pip install -e .
-```
-4. Install our fork of Stable Baselines3
+3. Install our fork of Stable Baselines3
 ```
 cd stable-baselines3
 python -m pip install -e .
 cd ..
+```
+4. Install dsrl dependencies
+```
+python -m pip install gymnasium[other]==1.2.0
+python -m pip install gymnasium-robotics
+python -m pip install pymunk==6.11.1
+python -m pip install -e .
 ```
 5. (Optional, don't currently recommend) Install our fork of DPPO 
 ```
@@ -50,7 +51,12 @@ cd ..
 ```
 
 ## Possible issues
-### Mujoco
+
+### Mujoco versions
+`gym_aloha` wants `mujoco==2.3.7`
+Other up to date versions are `mujoco=='3.3.5`
+
+### Mujoco visualization
 If you run into rendering issues with mujoco e.g: 
 ```
 
