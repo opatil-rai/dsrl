@@ -272,7 +272,11 @@ class DiffpoEnvWrapper(gym.Env):
             # cumulate rewards
             # TODO: Include option for discounting.
             # TODO: use the actual rewards, not just -1 per step (sparse)
-            cumulative_rewards += -1
+            # cumulative_rewards += -1
+            cumulative_rewards += reward
+            if terminated:
+                # big positive reward for finishing task
+                cumulative_rewards += 10
             # terminated / truncated
             if terminated or truncated:
                 break

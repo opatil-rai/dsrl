@@ -357,25 +357,21 @@ def make_env(video_folder, record_trigger):
     elif task == "pusht_latent":
         # Check device is available
         device = "cuda"
-        # Reset env, save specific state
-        # 1) Set to specific state
-        reset_state = np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])
-        options = {"reset_to_state": reset_state}
-        # 2) Set to random state
-        # options = None # No hard-coded reset state
-
-        # Random seed
-        # 1) Set the seed manually
-        gym_reset_seed = 1234522325 # or None for no fixed seed
-        # 2) Or set no random seed
-        # gym_reset_seed = None
+        if video_folder == "eval":
+            reset_state = np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])
+            options = {"reset_to_state": reset_state}
+            gym_reset_seed = 1234522325 # or None for no fixed seed
+        elif video_folder == "train":
+            # Reset env, save specific state
+            options = None # No hard-coded reset state
+            gym_reset_seed = None
         from lerobot_dsrl import generate_steerable_diffpo_pusht_gym_env
         env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed)
         action_min = np.ones([32])*-1
         action_max = np.ones([32])
         # linearlly normalize obs/action to [-1,1]
         env = RescaleAction(env, min_action=action_min, max_action=action_max)
-        env = TimeLimit(env, max_episode_steps=10)
+        env = TimeLimit(env, max_episode_steps=50)
     elif "fetch" in task:
         env = gym.make(other_config["env_name"],render_mode="rgb_array", max_episode_steps=100)
         env = FlattenObservation(env)
