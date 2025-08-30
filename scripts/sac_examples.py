@@ -363,12 +363,16 @@ def make_env(video_folder, record_trigger):
             gym_reset_seed = 1234522325 # or None for no fixed seed
         elif video_folder == "train":
             # Reset env, save specific state
-            options = None # No hard-coded reset state
-            gym_reset_seed = None
+            # options = None # No hard-coded reset state
+            # gym_reset_seed = None
+            reset_state = np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])
+            options = {"reset_to_state": reset_state}
+            gym_reset_seed = 1234522325 # or None for no fixed seed
         from lerobot_dsrl import generate_steerable_diffpo_pusht_gym_env
         env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed)
-        action_min = np.ones([32])*-1
-        action_max = np.ones([32])
+        # TODO: This should be 32 if copy_first_action=false
+        action_min = np.ones([2])*-1
+        action_max = np.ones([2])
         # linearlly normalize obs/action to [-1,1]
         env = RescaleAction(env, min_action=action_min, max_action=action_max)
         env = TimeLimit(env, max_episode_steps=50)

@@ -30,7 +30,6 @@ from lerobot.policies.utils import (
 python diffpo_wrapped_gym.py
 """
 
-
 # ========= inference  ============
 def control_conditional_sample(
     self,
@@ -99,6 +98,7 @@ class DiffpoEnvWrapper(gym.Env):
         seed : Optional[int] = None,
         success_threshold: Optional[float] = 0.8,
         save_frames: bool = True,
+        copy_first_action = True
     ):
         super().__init__()
 
@@ -128,6 +128,7 @@ class DiffpoEnvWrapper(gym.Env):
         self.n_action_steps = policy.config.n_action_steps
         self.action_dim = policy.config.action_feature.shape[0]
         self.n_obs_steps = policy.config.n_obs_steps
+        self.copy_first_action = copy_first_action
 
         # TODO: Make this based on the dimensions of the global conditioning OR the raw obs from env. For now, just conditioning
         # TODO: Global cond dim is never explicitly saved in hugginface model, it's built on the fly to make the unet. For now, just hardcoding what the dim is for the default model
@@ -138,12 +139,20 @@ class DiffpoEnvWrapper(gym.Env):
 
         # This action space is chunks of the original action space. For simplicity, we say it is a flat action space of action_dim*pred_horizon (although we only will execute n_action_steps amount of them)
         # TODO: Currently has bounds between -6,6 to capture with high probability all samples that fall under gaussian
-        self.action_space = spaces.Box(
-            low=-6.0,
-            high=6.0,
-            shape=(self.action_dim * self.pred_horizon,),
-            dtype=np.float32,
-        )
+        if self.copy_first_action:
+            self.action_space = spaces.Box(
+                low=-3.0,
+                high=3.0,
+                shape=(self.action_dim,),
+                dtype=np.float32,
+            )
+        else:
+            self.action_space = spaces.Box(
+                low=-3.0,
+                high=3.0,
+                shape=(self.action_dim * self.pred_horizon,),
+                dtype=np.float32,
+            )
         # override sample method of action_space to use gaussian instead of uniform distriubtion
         # TODO: Clip this so it's between action space?
         # self.action_space.sample = lambda: np.random.randn(
@@ -233,6 +242,8 @@ class DiffpoEnvWrapper(gym.Env):
         In future, just maintain my own queue and call generate_actions directly.
 
         """
+        if self.copy_first_action:
+            _action =  np.tile(_action, self.pred_horizon)
         # set policy.selected_noise_sample from _action, which policy will use
         self.policy.diffusion.selected_noise_sample = _action
 
@@ -272,11 +283,12 @@ class DiffpoEnvWrapper(gym.Env):
             # cumulate rewards
             # TODO: Include option for discounting.
             # TODO: use the actual rewards, not just -1 per step (sparse)
-            # cumulative_rewards += -1
-            cumulative_rewards += reward
+            cumulative_rewards += -1
+            # cumulative_rewards += reward
             if terminated:
                 # big positive reward for finishing task
-                cumulative_rewards += 10
+                # cumulative_rewards += 10
+                pass
             # terminated / truncated
             if terminated or truncated:
                 break
