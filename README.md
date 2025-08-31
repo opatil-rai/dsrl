@@ -41,7 +41,15 @@ python -m pip install gymnasium-robotics
 python -m pip install pymunk==6.11.1
 python -m pip install -e .
 ```
-5. (Optional, don't currently recommend) Install our fork of DPPO 
+
+5. Install lerobot dependencies
+```
+git clone https://github.com/huggingface/lerobot.git
+cd lerobot
+python -m pip install -e .
+```
+
+(Optional, don't currently recommend) Install our fork of DPPO 
 ```
 cd dppo
 pip install -e .
@@ -72,6 +80,11 @@ try
 ```
 export MUJOCO_GL=egl
 ```
+or if that doesn't work, one of these may:
+```
+export MUJOCO_GL=glfw 
+export MUJOCO_GL=osmesa 
+ ```
 
 ### Fetch
 You may need to set your `LD_LIBRARY_PATH` like so:
