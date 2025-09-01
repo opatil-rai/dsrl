@@ -15,6 +15,32 @@ from stable_baselines3.common.callbacks import BaseCallback
 import glob
 import os
 
+class EvalSaveCallback(EvalCallback):
+    """
+    Extended EvalCallback that saves model checkpoints to wandb
+    at every eval_freq step with unique names.
+    """
+    def __init__(self, *args, save_to_wandb=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.save_to_wandb = save_to_wandb
+
+    def _on_step(self) -> bool:
+        result = super()._on_step()
+
+        # Only act at eval frequency
+        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+            step = self.num_timesteps
+            ckpt_path = os.path.join(self.best_model_save_path, f"checkpoint_{step}.zip")
+            self.model.save(ckpt_path)
+
+            if self.save_to_wandb:
+                artifact = wandb.Artifact("checkpoints", type="model")
+                artifact.add_file(ckpt_path, name=f"checkpoint_{step}.zip")
+                wandb.log_artifact(artifact)
+
+        return result
+
+
 class VideoRecorderCallback(BaseCallback):
     """
     Logs VecVideoRecorder videos to wandb.
@@ -258,7 +284,8 @@ cfgs = {
         "pusht_latent":
         {
             "policy": "MlpPolicy",
-            "learning_rate":0.001
+            "learning_rate":0.001,
+            "policy_kwargs" : {"net_arch": [512,512]}
         },
         "gym_hil":{
             "policy": "MlpPolicy",
@@ -363,11 +390,11 @@ def make_env(video_folder, record_trigger):
             gym_reset_seed = 1234522325 # or None for no fixed seed
         elif video_folder == "train":
             # Reset env, save specific state
-            # options = None # No hard-coded reset state
-            # gym_reset_seed = None
-            reset_state = np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])
-            options = {"reset_to_state": reset_state}
-            gym_reset_seed = 1234522325 # or None for no fixed seed
+            options = None # No hard-coded reset state
+            gym_reset_seed = None
+            # reset_state = np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])
+            # options = {"reset_to_state": reset_state}
+            # gym_reset_seed = 1234522325 # or None for no fixed seed
         from lerobot_dsrl import generate_steerable_diffpo_pusht_gym_env
         env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed)
         # TODO: This should be 32 if copy_first_action=false
@@ -449,13 +476,14 @@ model = SAC(env=env, verbose=1, tensorboard_log=f"runs/{run.id}", **sac_config)
 # CALLBACKS
 # eval callback
 eval_freq = 5000
-eval_callback = EvalCallback(
-    eval_env,                      # separate evaluation env
-    best_model_save_path="./logs/best_model",
+eval_callback = EvalSaveCallback(
+    eval_env,
+    best_model_save_path="./logs/checkpoints",
     log_path="./logs/",
     eval_freq=eval_freq,
     deterministic=True,
-    render=True
+    render=False,  # rendering in eval slows things down a lot
+    save_to_wandb=True
 )
 # wandb callback
 wandb_callback = WandbCallback(
