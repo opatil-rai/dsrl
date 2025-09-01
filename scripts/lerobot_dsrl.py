@@ -96,7 +96,7 @@ class DiffpoEnvWrapper(gym.Env):
         policy: DiffusionPolicy,
         options : Optional[dict] = None,
         seed : Optional[int] = None,
-        success_threshold: Optional[float] = 0.8,
+        success_threshold: Optional[float] = 0.95,
         save_frames: bool = True,
         copy_first_action = True
     ):
