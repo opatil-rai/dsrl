@@ -39,7 +39,9 @@ cd ..
 python -m pip install gymnasium[other]==1.2.0
 python -m pip install gymnasium-robotics
 python -m pip install pymunk==6.11.1
+python -m pip install numpy==1.26.4
 python -m pip install -e .
+
 ```
 
 5. Install lerobot dependencies
