@@ -265,99 +265,6 @@ def task_import(task):
     elif "fetch" in task:
         import gymnasium_robotics
 
-# stats_window_size: default (100), determines how many episodes to go over for reporting evals like returns, success, etc.
-cfgs = {
-    "sac":
-    {
-        "pendulum":{
-            "policy": "MlpPolicy",
-            "learning_rate": 0.001,
-        },
-        "hopper":{
-            "policy": "MlpPolicy",
-            "learning_rate": 0.001,
-        },
-        "pusht":{
-            "policy": "MlpPolicy",
-            "learning_rate": 0.001,
-        },
-        "pusht_latent":
-        {
-            "policy": "MlpPolicy",
-            "learning_rate":0.001,
-            "policy_kwargs" : {"net_arch": [512,512]}
-        },
-        "gym_hil":{
-            "policy": "MlpPolicy",
-            "learning_rate": 0.001,
-        },
-        "fetch_reach":{
-            "policy": "MlpPolicy",
-            "learning_rate": 0.001,
-        },
-        "fetch_pick" :{
-            "policy": "MlpPolicy",
-            # "replay_buffer_class": HerReplayBuffer,
-            # "replay_buffer_kwargs": {"n_sampled_goal":4,
-            #                          "goal_selection_strategy":"future"},
-            "batch_size": 512,
-            "buffer_size":1_000_000,
-            "learning_rate": 1e-3,
-            "gamma": 0.95,
-            "tau": 	0.05,
-            "ent_coef":"auto",
-            "train_freq": 1,
-            "gradient_steps": 1,
-            "seed": 42,
-            
-        },
-    },
-    "other":
-    {
-        "pendulum":{
-            "total_timesteps": 20_000,
-            "env_name": "Pendulum-v1",
-        },
-        "hopper":{
-            "total_timesteps": 1e6,
-            "env_name": "Hopper-v5",
-        },
-        "pusht":{
-            "total_timesteps": 1e6,
-            "env_name": "gym_pusht/PushT-v0",
-        },
-        "pusht_latent":{
-            "total_timesteps": 1e6,
-        },
-        "gym_hil":{
-            "total_timesteps": 1e6,
-            "env_name": "gym_hil/PandaPickCubeBase-v0",
-        },
-        "fetch_reach":{
-            "total_timesteps": 1e6,
-            "env_name": "FetchReachDense-v4",
-        },
-        "fetch_pick" :{
-            "total_timesteps": 1e6,
-            "env_name": "FetchPickAndPlaceDense-v4",
-        },
-    }
-
-}
-
-task = "pusht_latent"
-task_import(task)
-sac_config = cfgs["sac"][task]
-other_config = cfgs["other"][task]
-
-run = wandb.init(
-    project="dsrl_sb3",
-    config=sac_config,
-    sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
-    monitor_gym=True,  # auto-upload the videos of agents playing the game
-    # save_code=True,  # optional
-)
-
 
 def make_env(video_folder, record_trigger):
     # ObservationAction Normalizing wrapper
@@ -467,61 +374,145 @@ def make_env(video_folder, record_trigger):
     )
     return env
 
-train_record_freq = 2000
-env = make_env("train", record_trigger=train_record_freq) 
-eval_env = make_env("eval", record_trigger=1) # trigger on every step of eval, eval recording happens at eval_freq
+if __name__ == "__main__":
+    # stats_window_size: default (100), determines how many episodes to go over for reporting evals like returns, success, etc.
+    cfgs = {
+        "sac":
+        {
+            "pendulum":{
+                "policy": "MlpPolicy",
+                "learning_rate": 0.001,
+            },
+            "hopper":{
+                "policy": "MlpPolicy",
+                "learning_rate": 0.001,
+            },
+            "pusht":{
+                "policy": "MlpPolicy",
+                "learning_rate": 0.001,
+            },
+            "pusht_latent":
+            {
+                "policy": "MlpPolicy",
+                "learning_rate":0.001,
+                "policy_kwargs" : {"net_arch": [512,512]}
+            },
+            "gym_hil":{
+                "policy": "MlpPolicy",
+                "learning_rate": 0.001,
+            },
+            "fetch_reach":{
+                "policy": "MlpPolicy",
+                "learning_rate": 0.001,
+            },
+            "fetch_pick" :{
+                "policy": "MlpPolicy",
+                # "replay_buffer_class": HerReplayBuffer,
+                # "replay_buffer_kwargs": {"n_sampled_goal":4,
+                #                          "goal_selection_strategy":"future"},
+                "batch_size": 512,
+                "buffer_size":1_000_000,
+                "learning_rate": 1e-3,
+                "gamma": 0.95,
+                "tau": 	0.05,
+                "ent_coef":"auto",
+                "train_freq": 1,
+                "gradient_steps": 1,
+                "seed": 42,
+                
+            },
+        },
+        "other":
+        {
+            "pendulum":{
+                "total_timesteps": 20_000,
+                "env_name": "Pendulum-v1",
+            },
+            "hopper":{
+                "total_timesteps": 1e6,
+                "env_name": "Hopper-v5",
+            },
+            "pusht":{
+                "total_timesteps": 1e6,
+                "env_name": "gym_pusht/PushT-v0",
+            },
+            "pusht_latent":{
+                "total_timesteps": 1e6,
+            },
+            "gym_hil":{
+                "total_timesteps": 1e6,
+                "env_name": "gym_hil/PandaPickCubeBase-v0",
+            },
+            "fetch_reach":{
+                "total_timesteps": 1e6,
+                "env_name": "FetchReachDense-v4",
+            },
+            "fetch_pick" :{
+                "total_timesteps": 1e6,
+                "env_name": "FetchPickAndPlaceDense-v4",
+            },
+        }
 
-model = SAC(env=env, verbose=1, tensorboard_log=f"runs/{run.id}", **sac_config)
+    }
 
-# CALLBACKS
-# eval callback
-eval_freq = 5000
-eval_callback = EvalSaveCallback(
-    eval_env,
-    best_model_save_path="./logs/checkpoints",
-    log_path="./logs/",
-    eval_freq=eval_freq,
-    deterministic=True,
-    render=False,  # rendering in eval slows things down a lot
-    save_to_wandb=True
-)
-# wandb callback
-wandb_callback = WandbCallback(
-                gradient_save_freq=train_record_freq,
-                model_save_path=f"models/{run.id}",
-                model_save_freq=eval_freq,
-                verbose=2,
+    task = "pendulum"
+    task_import(task)
+    sac_config = cfgs["sac"][task]
+    other_config = cfgs["other"][task]
+
+    run = wandb.init(
+        project="dsrl_sb3",
+        config=sac_config,
+        sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
+        monitor_gym=True,  # auto-upload the videos of agents playing the game
+        # save_code=True,  # optional
+    )
+
+    train_record_freq = 2000
+    env = make_env("train", record_trigger=train_record_freq) 
+    eval_env = make_env("eval", record_trigger=1) # trigger on every step of eval, eval recording happens at eval_freq
+
+    model = SAC(env=env, verbose=1, tensorboard_log=f"runs/{run.id}", **sac_config)
+
+    # CALLBACKS
+    # eval callback
+    eval_freq = 5000
+    eval_callback = EvalSaveCallback(
+        eval_env,
+        best_model_save_path="./logs/checkpoints",
+        log_path="./logs/",
+        eval_freq=eval_freq,
+        deterministic=True,
+        render=False,  # rendering in eval slows things down a lot
+        save_to_wandb=True
+    )
+    # wandb callback
+    wandb_callback = WandbCallback(
+                    gradient_save_freq=train_record_freq,
+                    model_save_path=f"models/{run.id}",
+                    model_save_freq=eval_freq,
+                    verbose=2,
+                    )
+
+    train_video_callback = VideoRecorderCallback(
+        video_folder=f"videos/{run.id}/train",
+        log_freq=train_record_freq, # same as rate we record training videos
+        wandb_prefix="rollout", # logging to rollout instead of train lets the videos be next to monitored train returns
+        delete_after_log=True
+    )
+
+    eval_video_callback = VideoRecorderCallback(
+        video_folder=f"videos/{run.id}/eval",
+        log_freq=eval_freq, # same as rate we record eval videos
+        wandb_prefix="eval",
+        delete_after_log=True
+    )
+
+
+    # all callbacks together
+    callback = CallbackList([eval_callback, wandb_callback, train_video_callback, eval_video_callback])
+
+    model.learn(total_timesteps=other_config["total_timesteps"],
+                callback=callback
                 )
-
-train_video_callback = VideoRecorderCallback(
-    video_folder=f"videos/{run.id}/train",
-    log_freq=train_record_freq, # same as rate we record training videos
-    wandb_prefix="rollout", # logging to rollout instead of train lets the videos be next to monitored train returns
-    delete_after_log=True
-)
-
-eval_video_callback = VideoRecorderCallback(
-    video_folder=f"videos/{run.id}/eval",
-    log_freq=eval_freq, # same as rate we record eval videos
-    wandb_prefix="eval",
-    delete_after_log=True
-)
-
-
-# all callbacks together
-callback = CallbackList([eval_callback, wandb_callback, train_video_callback, eval_video_callback])
-
-model.learn(total_timesteps=other_config["total_timesteps"],
-            callback=callback
-            )
-run.finish()
-
-# vec_env = model.get_env()
-# obs = vec_env.reset()
-# for i in range(1000):
-#     action, _state = model.predict(obs, deterministic=True)
-#     obs, reward, done, info = vec_env.step(action)
-#     vec_env.render("human")
-#     # VecEnv resets automatically
-#     # if done:
-#     #   obs = vec_env.reset()
+    run.finish()
