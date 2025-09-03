@@ -20,9 +20,10 @@ class EvalSaveCallback(EvalCallback):
     Extended EvalCallback that saves model checkpoints to wandb
     at every eval_freq step with unique names.
     """
-    def __init__(self, *args, save_to_wandb=True, **kwargs):
+    def __init__(self, *args, run_id, save_to_wandb=True, **kwargs):
         super().__init__(*args, **kwargs)
         self.save_to_wandb = save_to_wandb
+        self.run_id = run_id
 
     def _on_step(self) -> bool:
         result = super()._on_step()
@@ -34,7 +35,7 @@ class EvalSaveCallback(EvalCallback):
             self.model.save(ckpt_path)
 
             if self.save_to_wandb:
-                artifact = wandb.Artifact("checkpoints", type="model")
+                artifact = wandb.Artifact(name=f"agent_{self.run_id}", type="model")
                 artifact.add_file(ckpt_path, name=f"checkpoint_{step}.zip")
                 wandb.log_artifact(artifact)
 
@@ -484,7 +485,8 @@ if __name__ == "__main__":
         eval_freq=eval_freq,
         deterministic=True,
         render=False,  # rendering in eval slows things down a lot
-        save_to_wandb=True
+        save_to_wandb=True,
+        run_id = run.id
     )
     # wandb callback
     wandb_callback = WandbCallback(
