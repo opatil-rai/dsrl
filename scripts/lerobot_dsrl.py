@@ -115,7 +115,7 @@ class DiffpoEnvWrapper(gym.Env):
         self.policy.eval()  # Ensure policy is in eval mode
         # potentially override success for pusht
         # TODO: this is specific to pusht having hard-coded 95% success. should make a pr to change that
-        self.env.env.env.success_threshold = success_threshold
+        self.env.unwrapped.success_threshold = success_threshold
         self.options = options
         self.seed = seed
 
