@@ -190,7 +190,7 @@ class DiffpoEnvWrapper(gym.Env):
         # reset frames
         if self.save_frames:
             # reset the frames, and add initial
-            self.frames = [self._last_obs["pixels"]]
+            self.frames = [self.render()]
 
         # We now process obs into the first obs the agent will actually get (by taking it and populating buffer a bunch).
         # this is identical to what we do in step execept we don't ues the policy buffer, we just make our own with repeated obs
@@ -270,7 +270,7 @@ class DiffpoEnvWrapper(gym.Env):
 
             # add latest obs
             if self.save_frames:
-                self.frames += [obs["pixels"]]
+                self.frames += [self.render()]
 
             # Confirm we are running it up to the point that there are no more actions in the action queue.
             if i_step < self.policy.config.n_action_steps - 1:
