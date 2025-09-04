@@ -15,6 +15,7 @@ import os
 from copy import deepcopy
 from gymnasium.wrappers import RescaleAction
 
+
 class ResetOptionsWrapper(gym.Wrapper):
     def __init__(
         self,
@@ -39,21 +40,20 @@ class ResetOptionsWrapper(gym.Wrapper):
 
         return self.env.reset(**kwargs)
 
-def eval_base_policy(env, seeds):
+def eval_base_policy(env, seeds, video_parent_dir = "videos", video_dir_name = "base"):
     # make policy
     policy = DiffusionPolicy.from_pretrained("lerobot/diffusion_pusht").to(device)
 
     # results storage
-    all_rewards = []
-    success_flags = []
+    all_episode_returns = []
+    video_dir_path = f"{video_parent_dir}/{video_dir_name}"
 
-    os.makedirs("videos", exist_ok=True)
+    os.makedirs(video_dir_path, exist_ok=True)
 
     for episode_idx, seed in enumerate(seeds, start=1):
         policy.reset()
         obs, info = env.reset()
         frames = [env.render()]
-        episode_rewards = []
         total_reward = 0.0
         terminated, truncated = False, False
 
@@ -70,7 +70,7 @@ def eval_base_policy(env, seeds):
             action = action.to("cpu").numpy().squeeze(0)
             obs, reward, terminated, truncated, info = env.step(action)
             reward = -1
-            episode_rewards.append(reward)
+            total_reward += reward
 
             frames.append(env.render())
 
@@ -78,14 +78,18 @@ def eval_base_policy(env, seeds):
                 break
 
         # save video
-        video_path = f"videos/pusht_rollout_seed{seed}.mp4"
+        video_path = f"{video_dir_path}/episode_{episode_idx}_seed_{seed}.mp4"
         imageio.mimsave(video_path, frames, fps=20)
-        print(f"Saved video for seed {seed} -> {video_path}, returns: {sum(episode_rewards)}")
+        print(f"Saved video for seed {seed} -> {video_path}, returns: {total_reward}")
+        # save returns
+        all_episode_returns.append(total_reward)
+        np.save(f"{video_dir_path}/returns.npy", all_episode_returns)
 
        
 
-def eval_random_policy(env, seeds, max_timesteps, copy_first_action, success_threshold, sac_path, deterministic=True):
-    video_prefix = "random_"
+def eval_random_policy(env, seeds, max_timesteps, copy_first_action, success_threshold, sac_path, deterministic=True,  video_parent_dir = "videos", video_dir_name = "latent_random"):
+    video_dir_path = f"{video_parent_dir}/{video_dir_name}"
+    os.makedirs(video_dir_path, exist_ok=True)
     # make diffpo
     policy = DiffusionPolicy.from_pretrained("lerobot/diffusion_pusht").to(device)
 
@@ -113,14 +117,14 @@ def eval_random_policy(env, seeds, max_timesteps, copy_first_action, success_thr
         wrapped_env = RescaleAction(wrapped_env, min_action=action_min, max_action=action_max)
         model = SAC.load(sac_path,env=wrapped_env)
 
-    num_rollouts = len(seeds)
     max_frames = max_timesteps
     all_rollout_frames = []
+    all_episode_returns = []
 
     init_noise_generator = torch.Generator(device="cuda")
     init_noise_generator.manual_seed(4221)
 
-    for rollout in range(num_rollouts):
+    for rollout in range(len(seeds)):
         obs, info = wrapped_env.reset()
         total_rewards = 0
         # get the initial frame
@@ -142,34 +146,53 @@ def eval_random_policy(env, seeds, max_timesteps, copy_first_action, success_thr
             if terminated or truncated:
                 break
         print(f"terminated:{terminated}, returns: {total_rewards}")
+        
         # get frames
         # Save individual video
-        video_filename = f"{video_prefix}_rollout_{rollout}.mp4"
-        imageio.mimsave(video_filename, frames, fps=30)
-        print(f"Saved {video_filename}")
+        video_path = f"{video_dir_path}/episode_{rollout}_seed_{seeds[rollout]}.mp4"
+        imageio.mimsave(video_path, frames, fps=30)
+        print(f"Saved {video_path}, terminated:{terminated}, returns: {total_rewards}")
 
-        # Pad to max length with last frame
-        while len(frames) < max_frames:
-            frames.append(deepcopy(frames[-1]))
+        # save the returns
+        all_episode_returns.append(total_rewards)
+        np.save(f"{video_dir_path}/returns.npy", all_episode_returns)
 
-        all_rollout_frames.append(frames)
+    #     # Pad to max length with last frame
+    #     while len(frames) < max_frames:
+    #         frames.append(deepcopy(frames[-1]))
 
-    # --- Create overlay video ---
-    overlay_frames = []
+    #     all_rollout_frames.append(frames)
 
-    for frame_idx in range(max_frames):
-        overlay = np.mean(
-            [rollout[frame_idx] for rollout in all_rollout_frames], axis=0
-        ).astype(np.uint8)
-        overlay_frames.append(overlay)
+    # # --- Create overlay video ---
+    # overlay_frames = []
 
-    imageio.mimsave(f"{video_prefix}_overlay.mp4", overlay_frames, fps=30)
-    print("Saved overlay.mp4")
+    # for frame_idx in range(max_frames):
+    #     overlay = np.mean(
+    #         [rollout[frame_idx] for rollout in all_rollout_frames], axis=0
+    #     ).astype(np.uint8)
+    #     overlay_frames.append(overlay)
+
+    # imageio.mimsave(f"{video_dir_path}/overlay.mp4", overlay_frames, fps=30)
+    # print("Saved overlay.mp4")
 
 
 
 if __name__ == "__main__":
-    success_threshold = 0.95
+    ## SAC Eval stuff
+    sac_model_dir = "./my_models"
+    sac_ckpt = "graceful_breezev20.zip"
+    sac_path = f"{sac_model_dir}/{sac_ckpt}"
+    copy_first_action = True
+    deterministic = True
+    video_parent_dir = "eval_videos"
+
+    if sac_path is None:
+        video_dir_name = "latent_random"
+    else:
+        video_dir_name = f"latent_{sac_ckpt.split('.')[0]}"
+
+    # pusht options
+    success_threshold = 0.9
 
     options = None
     # reset_state = np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])
@@ -188,15 +211,12 @@ if __name__ == "__main__":
     }
 
     # list of seeds to evaluate
-    seeds = list(range(1, 6))  # [1,2,3,4,5]
+    seeds = list(range(100))
     env = gym.make(gym_handle, disable_env_checker=True, **gym_kwargs)
-    env.success_threshold = success_threshold
+    env.unwrapped.success_threshold = success_threshold
     env = ResetOptionsWrapper(env, options=options, seeds=seeds)
     env = TimeLimit(env, max_episode_steps=max_timesteps)
+    
+    # eval_base_policy(env, seeds, video_parent_dir=video_parent_dir, video_dir_name="base")
 
-    # eval_base_policy(env, seeds)
-
-    sac_path = "./my_models/pusht_latent_new.zip"
-    copy_first_action = True
-    deterministic = True
-    eval_random_policy(env, seeds, max_timesteps, copy_first_action=copy_first_action, success_threshold=success_threshold, sac_path=sac_path,deterministic=deterministic)
+    eval_random_policy(env, seeds, max_timesteps, copy_first_action=copy_first_action, success_threshold=success_threshold, sac_path=sac_path,deterministic=deterministic,video_parent_dir=video_parent_dir, video_dir_name=video_dir_name)
