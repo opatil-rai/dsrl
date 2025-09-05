@@ -348,7 +348,7 @@ class DiffpoEnvWrapper(gym.Env):
 
 
 def generate_steerable_diffpo_pusht_gym_env(
-    device: str = "cuda", scheduler_type="DDIM", options : Optional[dict] = {"reset_to_state" : np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])}, seed : Optional[int] = None,
+    device: str = "cuda", scheduler_type="DDIM", options : Optional[dict] = {"reset_to_state" : np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])}, seed : Optional[int] = None, desired_action_dim=2
 ):
     """
     Returns a gym env of a pusht environment with a wrapped diffusion policy, where
@@ -393,7 +393,7 @@ def generate_steerable_diffpo_pusht_gym_env(
         pass
 
     # Wrap the env
-    simple_wrapped_env = DiffpoEnvWrapper(env, policy, options, seed)
+    simple_wrapped_env = DiffpoEnvWrapper(env, policy, options, seed, desired_action_dim=desired_action_dim)
     # check_env_spaces(simple_wrapped_env)
     # wrapped_env = SerlTorchObsWrapper(simple_wrapped_env)
     # check_env_spaces(wrapped_env)

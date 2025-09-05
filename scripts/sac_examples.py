@@ -267,7 +267,7 @@ def task_import(task):
         import gymnasium_robotics
 
 
-def make_env(video_folder, record_trigger):
+def make_env(video_folder, record_trigger, other_config):
     # ObservationAction Normalizing wrapper
     if task == "pusht":
         env = gym.make(other_config["env_name"],render_mode="rgb_array")
@@ -304,10 +304,10 @@ def make_env(video_folder, record_trigger):
             # options = {"reset_to_state": reset_state}
             # gym_reset_seed = 1234522325 # or None for no fixed seed
         from lerobot_dsrl import generate_steerable_diffpo_pusht_gym_env
-        env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed)
-        # TODO: This should be 32 if copy_first_action=false
-        action_min = np.ones([2])*-1
-        action_max = np.ones([2])
+        env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed, desired_action_dim=other_config["desired_action_dim"])
+        # make action min/max -1,1 based on desired_action_dim
+        action_min = np.ones([other_config["desired_action_dim"]])*-1
+        action_max = np.ones([other_config["desired_action_dim"]])
         # linearlly normalize obs/action to [-1,1]
         env = RescaleAction(env, min_action=action_min, max_action=action_max)
         env = TimeLimit(env, max_episode_steps=50)
@@ -439,6 +439,7 @@ if __name__ == "__main__":
             },
             "pusht_latent":{
                 "total_timesteps": 1e6,
+                "desired_action_dim":2
             },
             "gym_hil":{
                 "total_timesteps": 1e6,
@@ -456,7 +457,7 @@ if __name__ == "__main__":
 
     }
 
-    task = "pendulum"
+    task = "pusht_latent"
     task_import(task)
     sac_config = cfgs["sac"][task]
     other_config = cfgs["other"][task]
@@ -470,8 +471,8 @@ if __name__ == "__main__":
     )
 
     train_record_freq = 2000
-    env = make_env("train", record_trigger=train_record_freq) 
-    eval_env = make_env("eval", record_trigger=1) # trigger on every step of eval, eval recording happens at eval_freq
+    env = make_env("train", record_trigger=train_record_freq, other_config=other_config) 
+    eval_env = make_env("eval", record_trigger=1,other_config=other_config) # trigger on every step of eval, eval recording happens at eval_freq
 
     model = SAC(env=env, verbose=1, tensorboard_log=f"runs/{run.id}", **sac_config)
 
