@@ -40,7 +40,7 @@ class ResetOptionsWrapper(gym.Wrapper):
 
         return self.env.reset(**kwargs)
 
-def eval_base_policy(env, seeds, video_parent_dir = "videos", video_dir_name = "base"):
+def eval_base_policy(env, seeds, video_parent_dir = "videos", video_dir_name = "base", fps=30):
     # make policy
     policy = DiffusionPolicy.from_pretrained("lerobot/diffusion_pusht").to(device)
 
@@ -79,7 +79,7 @@ def eval_base_policy(env, seeds, video_parent_dir = "videos", video_dir_name = "
 
         # save video
         video_path = f"{video_dir_path}/episode_{episode_idx}_seed_{seed}.mp4"
-        imageio.mimsave(video_path, frames, fps=20)
+        imageio.mimsave(video_path, frames, fps=fps)
         print(f"Saved video for seed {seed} -> {video_path}, returns: {total_reward}")
         # save returns
         all_episode_returns.append(total_reward)
@@ -87,7 +87,7 @@ def eval_base_policy(env, seeds, video_parent_dir = "videos", video_dir_name = "
 
        
 
-def eval_random_policy(env, seeds, max_timesteps, copy_first_action, success_threshold, sac_path, deterministic=True,  video_parent_dir = "videos", video_dir_name = "latent_random"):
+def eval_random_policy(env, seeds, max_timesteps, copy_first_action, success_threshold, sac_path, deterministic=True,  video_parent_dir = "videos", video_dir_name = "latent_random", fps=30):
     video_dir_path = f"{video_parent_dir}/{video_dir_name}"
     os.makedirs(video_dir_path, exist_ok=True)
     # make diffpo
@@ -150,7 +150,7 @@ def eval_random_policy(env, seeds, max_timesteps, copy_first_action, success_thr
         # get frames
         # Save individual video
         video_path = f"{video_dir_path}/episode_{rollout}_seed_{seeds[rollout]}.mp4"
-        imageio.mimsave(video_path, frames, fps=30)
+        imageio.mimsave(video_path, frames, fps=fps)
         print(f"Saved {video_path}, terminated:{terminated}, returns: {total_rewards}")
 
         # save the returns
@@ -181,15 +181,32 @@ if __name__ == "__main__":
     ## SAC Eval stuff
     sac_model_dir = "./my_models"
     sac_ckpt = "graceful_breezev20.zip"
-    sac_path = f"{sac_model_dir}/{sac_ckpt}"
-    copy_first_action = True
-    deterministic = True
+    # sac_path = f"{sac_model_dir}/{sac_ckpt}"
+    sac_path = None
+
+    copy_first_action = False # copy first action or not
+    deterministic = True # only matters if sac_path is not None
     video_parent_dir = "eval_videos"
 
+    ### naming
+    # based on sac path, whether it's random/base policy, or sac ckpt is used
     if sac_path is None:
         video_dir_name = "latent_random"
     else:
         video_dir_name = f"latent_{sac_ckpt.split('.')[0]}"
+    # deterministic or not, this only really matters if sac_path is not None (since stochastic refers to sampling from sac policy)
+    if deterministic:
+        video_dir_name += "_deterministic"
+    else:
+        video_dir_name += "_stochastic"
+    
+    # copy first action
+    if copy_first_action:
+        video_dir_name += "_copyfirstaction"
+    else:
+        video_dir_name += "_nocopyfirstaction"
+
+    
 
     # pusht options
     success_threshold = 0.9
@@ -210,13 +227,16 @@ if __name__ == "__main__":
         "max_episode_steps": max_timesteps,
     }
 
+    # options for saved videos from eval
+    fps = 30
+
     # list of seeds to evaluate
-    seeds = list(range(100))
+    seeds = [1]*10
     env = gym.make(gym_handle, disable_env_checker=True, **gym_kwargs)
     env.unwrapped.success_threshold = success_threshold
     env = ResetOptionsWrapper(env, options=options, seeds=seeds)
     env = TimeLimit(env, max_episode_steps=max_timesteps)
     
-    # eval_base_policy(env, seeds, video_parent_dir=video_parent_dir, video_dir_name="base")
+    # eval_base_policy(env, seeds, video_parent_dir=video_parent_dir, video_dir_name="base", fps=fps)
 
-    eval_random_policy(env, seeds, max_timesteps, copy_first_action=copy_first_action, success_threshold=success_threshold, sac_path=sac_path,deterministic=deterministic,video_parent_dir=video_parent_dir, video_dir_name=video_dir_name)
+    eval_random_policy(env, seeds, max_timesteps, copy_first_action=copy_first_action, success_threshold=success_threshold, sac_path=sac_path,deterministic=deterministic,video_parent_dir=video_parent_dir, video_dir_name=video_dir_name, fps=fps)
