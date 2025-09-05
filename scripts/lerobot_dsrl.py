@@ -98,7 +98,7 @@ class DiffpoEnvWrapper(gym.Env):
         seed : Optional[int] = None,
         success_threshold: Optional[float] = 0.95,
         save_frames: bool = True,
-        copy_first_action = True
+        desired_action_dim = 2
     ):
         super().__init__()
 
@@ -128,7 +128,8 @@ class DiffpoEnvWrapper(gym.Env):
         self.n_action_steps = policy.config.n_action_steps
         self.action_dim = policy.config.action_feature.shape[0]
         self.n_obs_steps = policy.config.n_obs_steps
-        self.copy_first_action = copy_first_action
+        self.desired_action_dim = desired_action_dim
+        self.action_chunk_dim = self.action_dim * self.pred_horizon
 
         # TODO: Make this based on the dimensions of the global conditioning OR the raw obs from env. For now, just conditioning
         # TODO: Global cond dim is never explicitly saved in hugginface model, it's built on the fly to make the unet. For now, just hardcoding what the dim is for the default model
@@ -138,21 +139,23 @@ class DiffpoEnvWrapper(gym.Env):
         )
 
         # This action space is chunks of the original action space. For simplicity, we say it is a flat action space of action_dim*pred_horizon (although we only will execute n_action_steps amount of them)
-        # TODO: Currently has bounds between -6,6 to capture with high probability all samples that fall under gaussian
-        if self.copy_first_action:
+        # TODO: Currently has bounds between -3,3 to capture with high probability all samples that fall under gaussian
+        if self.desired_action_dim < 1: # 0, or negative number: entire action chunk is action space
             self.action_space = spaces.Box(
                 low=-3.0,
                 high=3.0,
-                shape=(self.action_dim,),
+                shape=(self.action_chunk_dim,),
                 dtype=np.float32,
             )
-        else:
+        elif self.desired_action_dim >=1 and self.desired_action_dim <= self.action_chunk_dim: # reasonably in bounds, make it desired
             self.action_space = spaces.Box(
                 low=-3.0,
                 high=3.0,
-                shape=(self.action_dim * self.pred_horizon,),
+                shape=(self.desired_action_dim,),
                 dtype=np.float32,
             )
+        else: # above desired, raise error
+            raise ValueError(f"desired_action_dim is {self.desired_action_dim} but action chunk is size {self.action_dim}*{self.pred_horizon}={self.action_chunk_dim}, make it smaller")
         # override sample method of action_space to use gaussian instead of uniform distriubtion
         # TODO: Clip this so it's between action space?
         # self.action_space.sample = lambda: np.random.randn(
@@ -234,6 +237,15 @@ class DiffpoEnvWrapper(gym.Env):
         # TODO: Confirm this global_cond matches what the policy actually gets on first step of reset
         return global_cond, info
 
+    def expand_action(self, action, target_size):
+        """
+        Repeat (tile) action until reaching target_size.
+        If the final length overshoots, it is truncated.
+        """
+        repeats = -(-target_size // len(action))  # ceil division
+        expanded = np.tile(action, repeats)
+        return expanded[:target_size]
+
     def step(self, _action):
         """
         For n_action_steps, keeping calling select_action with the new obs
@@ -242,8 +254,8 @@ class DiffpoEnvWrapper(gym.Env):
         In future, just maintain my own queue and call generate_actions directly.
 
         """
-        if self.copy_first_action:
-            _action =  np.tile(_action, self.pred_horizon)
+        if self.desired_action_dim >= 1: # need to do tiling
+            _action = self.expand_action(_action, self.action_chunk_dim)
         # set policy.selected_noise_sample from _action, which policy will use
         self.policy.diffusion.selected_noise_sample = _action
 

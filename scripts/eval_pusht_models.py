@@ -87,7 +87,7 @@ def eval_base_policy(env, seeds, video_parent_dir = "videos", video_dir_name = "
 
        
 
-def eval_random_policy(env, seeds, max_timesteps, copy_first_action, success_threshold, sac_path, deterministic=True,  video_parent_dir = "videos", video_dir_name = "latent_random", fps=30):
+def eval_random_policy(options, env, seeds, max_timesteps, desired_action_dim, success_threshold, sac_path, deterministic=True,  video_parent_dir = "videos", video_dir_name = "latent_random", fps=30, device="cuda"):
     video_dir_path = f"{video_parent_dir}/{video_dir_name}"
     os.makedirs(video_dir_path, exist_ok=True)
     # make diffpo
@@ -108,7 +108,7 @@ def eval_random_policy(env, seeds, max_timesteps, copy_first_action, success_thr
     )
 
     # Wrap the env
-    wrapped_env = DiffpoEnvWrapper(env, policy, options, seed=None, success_threshold=success_threshold,copy_first_action=copy_first_action)
+    wrapped_env = DiffpoEnvWrapper(env, policy, options, seed=None, success_threshold=success_threshold,desired_action_dim=desired_action_dim)
 
     if sac_path is not None:
         action_min = np.ones([2])*-1
@@ -175,16 +175,14 @@ def eval_random_policy(env, seeds, max_timesteps, copy_first_action, success_thr
     # imageio.mimsave(f"{video_dir_path}/overlay.mp4", overlay_frames, fps=30)
     # print("Saved overlay.mp4")
 
-
-
-if __name__ == "__main__":
+def run_eval(desired_action_dim):
     ## SAC Eval stuff
     sac_model_dir = "./my_models"
     sac_ckpt = "graceful_breezev20.zip"
     # sac_path = f"{sac_model_dir}/{sac_ckpt}"
     sac_path = None
 
-    copy_first_action = False # copy first action or not
+    desired_action_dim = desired_action_dim # desired action dim. <1 (i.e: 0 or negativ) means full action chunk. anything else is tiled up as needed.
     deterministic = True # only matters if sac_path is not None
     video_parent_dir = "eval_videos"
 
@@ -200,11 +198,8 @@ if __name__ == "__main__":
     else:
         video_dir_name += "_stochastic"
     
-    # copy first action
-    if copy_first_action:
-        video_dir_name += "_copyfirstaction"
-    else:
-        video_dir_name += "_nocopyfirstaction"
+    # copy first action info
+    video_dir_name += f"_actiondim{desired_action_dim}"
 
     
 
@@ -215,7 +210,7 @@ if __name__ == "__main__":
     # reset_state = np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])
     # options = {"reset_to_state": reset_state}
 
-    max_timesteps = 1000  # PushT already capped at 300 steps
+    max_timesteps = 300  # PushT already capped at 300 steps
     device = "cuda"
 
     gym_handle = "gym_pusht/PushT-v0"
@@ -231,7 +226,7 @@ if __name__ == "__main__":
     fps = 30
 
     # list of seeds to evaluate
-    seeds = [1]*10
+    seeds = list(range(10))
     env = gym.make(gym_handle, disable_env_checker=True, **gym_kwargs)
     env.unwrapped.success_threshold = success_threshold
     env = ResetOptionsWrapper(env, options=options, seeds=seeds)
@@ -239,4 +234,20 @@ if __name__ == "__main__":
     
     # eval_base_policy(env, seeds, video_parent_dir=video_parent_dir, video_dir_name="base", fps=fps)
 
-    eval_random_policy(env, seeds, max_timesteps, copy_first_action=copy_first_action, success_threshold=success_threshold, sac_path=sac_path,deterministic=deterministic,video_parent_dir=video_parent_dir, video_dir_name=video_dir_name, fps=fps)
+    eval_random_policy(options,
+                        env,
+                        seeds,
+                        max_timesteps, 
+                        desired_action_dim=desired_action_dim, 
+                        success_threshold=success_threshold, 
+                        sac_path=sac_path,
+                        deterministic=deterministic,
+                        video_parent_dir=video_parent_dir, 
+                        video_dir_name=video_dir_name, 
+                        fps=fps,
+                        device=device)
+
+
+if __name__ == "__main__":
+    for i in range(33):
+        run_eval(desired_action_dim=i)
