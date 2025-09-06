@@ -40,7 +40,7 @@ class ResetOptionsWrapper(gym.Wrapper):
 
         return self.env.reset(**kwargs)
 
-def eval_base_policy(env, seeds, video_parent_dir = "videos", video_dir_name = "base", fps=30):
+def eval_base_policy(env, seeds, max_timesteps, video_parent_dir = "videos", video_dir_name = "base", fps=30, device="cuda"):
     # make policy
     policy = DiffusionPolicy.from_pretrained("lerobot/diffusion_pusht").to(device)
 
@@ -111,8 +111,8 @@ def eval_random_policy(options, env, seeds, max_timesteps, desired_action_dim, s
     wrapped_env = DiffpoEnvWrapper(env, policy, options, seed=None, success_threshold=success_threshold,desired_action_dim=desired_action_dim)
 
     if sac_path is not None:
-        action_min = np.ones([2])*-1
-        action_max = np.ones([2])
+        action_min = np.ones([desired_action_dim])*-1
+        action_max = np.ones([desired_action_dim])
         # linearlly normalize obs/action to [-1,1]
         wrapped_env = RescaleAction(wrapped_env, min_action=action_min, max_action=action_max)
         model = SAC.load(sac_path,env=wrapped_env)
@@ -176,12 +176,6 @@ def eval_random_policy(options, env, seeds, max_timesteps, desired_action_dim, s
     # print("Saved overlay.mp4")
 
 def run_eval(desired_action_dim):
-    ## SAC Eval stuff
-    sac_model_dir = "./my_models"
-    sac_ckpt = "graceful_breezev20.zip"
-    # sac_path = f"{sac_model_dir}/{sac_ckpt}"
-    sac_path = None
-
     desired_action_dim = desired_action_dim # desired action dim. <1 (i.e: 0 or negativ) means full action chunk. anything else is tiled up as needed.
     deterministic = True # only matters if sac_path is not None
     video_parent_dir = "eval_videos"
@@ -226,13 +220,19 @@ def run_eval(desired_action_dim):
     fps = 30
 
     # list of seeds to evaluate
-    seeds = list(range(10))
+    seeds = [52] * 10
     env = gym.make(gym_handle, disable_env_checker=True, **gym_kwargs)
     env.unwrapped.success_threshold = success_threshold
     env = ResetOptionsWrapper(env, options=options, seeds=seeds)
     env = TimeLimit(env, max_episode_steps=max_timesteps)
     
-    # eval_base_policy(env, seeds, video_parent_dir=video_parent_dir, video_dir_name="base", fps=fps)
+    # eval_base_policy(env, 
+    #                  seeds,
+    #                  max_timesteps, 
+    #                  video_parent_dir=video_parent_dir, 
+    #                  video_dir_name="base", 
+    #                  fps=fps,
+    #                  device=device)
 
     eval_random_policy(options,
                         env,
@@ -249,5 +249,12 @@ def run_eval(desired_action_dim):
 
 
 if __name__ == "__main__":
-    for i in range(33):
-        run_eval(desired_action_dim=i)
+    ## SAC Eval stuff
+    sac_model_dir = "./my_models"
+    sac_ckpt = "electric_cloudv31"
+    sac_path = f"{sac_model_dir}/{sac_ckpt}"
+    # sac_path = None
+
+    desired_action_dim = 2
+
+    run_eval(desired_action_dim=desired_action_dim)
