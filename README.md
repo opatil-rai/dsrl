@@ -51,7 +51,19 @@ cd lerobot
 python -m pip install -e .
 ```
 
-(Optional, don't currently recommend) Install our fork of DPPO 
+6. (Optional) If using Aloha tasks, you should run this script to make sure GPU is used for rendering instead of CPU:
+```
+python scripts/aloha_rendering_fix.py
+```
+
+And you may need to do the following for rendering to work: (`LD_PRELOAD` path may be specific for your system)
+```
+export MUJOCO_GL=egl
+exoport LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+```
+
+
+7. (Optional, don't currently recommend) Install our fork of DPPO 
 ```
 cd dppo
 pip install -e .
