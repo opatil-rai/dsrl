@@ -59,6 +59,20 @@ pip install -e .[robomimic]
 pip install -e .[gym]
 cd ..
 ```
+## Training
+You can train a dsrl-sac agent via:
+```
+python scripts/sac_examples.py
+```
+
+##  Evaluating
+### Pusht
+For a saved checkpoint, or the base `lerobot` diffusion policy, you can run
+
+```
+python scripts/eval_pusht_models.py
+```
+
 
 ## Possible issues
 
