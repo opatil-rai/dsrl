@@ -59,7 +59,7 @@ python scripts/aloha_rendering_fix.py
 And you may need to do the following for rendering to work: (`LD_PRELOAD` path may be specific for your system)
 ```
 export MUJOCO_GL=egl
-exoport LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
 ```
 
 
