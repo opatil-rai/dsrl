@@ -219,22 +219,22 @@ def run_eval(desired_action_dim):
     fps = 30
 
     # list of seeds to evaluate
-    seeds = list(range(10))
-    # nested_seeds = [[x]*10 for x in range(10)]
-    # seeds = [x for l in nested_seeds for x in l]
+    # seeds = list(range(100))
+    nested_seeds = [[x]*10 for x in range(10)]
+    seeds = [x for l in nested_seeds for x in l]
 
     env = gym.make(gym_handle, disable_env_checker=True, **gym_kwargs)
     env.unwrapped.success_threshold = success_threshold
     env = ResetOptionsWrapper(env, options=options, seeds=seeds)
     env = TimeLimit(env, max_episode_steps=max_timesteps)
     
-    # eval_base_policy(env, 
-    #                  seeds,
-    #                  max_timesteps, 
-    #                  video_parent_dir=video_parent_dir, 
-    #                  video_dir_name="base", 
-    #                  fps=fps,
-    #                  device=device)
+    eval_base_policy(env, 
+                     seeds,
+                     max_timesteps, 
+                     video_parent_dir=video_parent_dir, 
+                     video_dir_name="base", 
+                     fps=fps,
+                     device=device)
 
     eval_random_policy(options,
                         env,
@@ -253,7 +253,7 @@ def run_eval(desired_action_dim):
 if __name__ == "__main__":
     ## SAC Eval stuff
     sac_model_dir = "./my_models"
-    sac_ckpt = "electric_cloudv73"
+    sac_ckpt = "electric_cloudv139"
     sac_path = f"{sac_model_dir}/{sac_ckpt}"
     # sac_path = None
 
