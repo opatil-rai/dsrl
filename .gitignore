@@ -22,6 +22,10 @@ logs/
 wandb/
 dppo/log/
 dppo/checkpoints/
+lerobot/
+runs/
+videos/
+eval_videos/
 
 # Setuptools distribution and build folders.
 /dist/
