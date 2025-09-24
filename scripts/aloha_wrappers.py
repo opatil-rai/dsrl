@@ -39,8 +39,35 @@ class Pi0EnvWrapper(gym.Env):
             # reset the frames, and add initial
             self.frames = [self.render()]
 
+        # Lets process this observation to obs the first obs for policy
+        obs = preprocess_observation(obs)
+        
+        # TODO: Grab device rather than hardcode cuda
+        obs = {
+            key: obs[key].to("cuda", non_blocking=True) for key in obs
+        }
+
+        # Set task description
+        # TODO: For now, just using hardcoded transfer_cube, should be environment dependent
+        obs["task"] = ["transfer_cube"]
+
+        # TODO: I don't think this is currently true so i'm commenting it out, but check it out
+        # if self.config.adapt_to_pi_aloha:
+        #     observation[OBS_STATE] = self._pi_aloha_decode_state(batch[OBS_STATE])
+
+        obs = self.policy.normalize_inputs(obs)
+
+        # queue should be totally empty due to reset
+        assert len(self.policy._action_queue) == 0
+
+        images, img_masks = self.policy.prepare_images(obs)
+        state = self.policy.prepare_state(obs)
+
+        breakpoint()
+
 def run_basic_pi0_aloha(seeds : list[int] = [0], device : str = "cuda"):
-    video_dir_path = "aloha_pi0_videos_5000ckpt"
+    video_dir_path = "aloha_pi0_videos_lastckpt_seed4_fixnoise_clone"
+    fix_noise = True
 
     os.makedirs(video_dir_path, exist_ok=True)
     import gym_aloha
@@ -55,8 +82,26 @@ def run_basic_pi0_aloha(seeds : list[int] = [0], device : str = "cuda"):
     env = gym.make("gym_aloha/AlohaTransferCube-v0", **gym_kwargs)
 
     # policy = PI0Policy.from_pretrained("BrunoM42/pi0_aloha_transfer_cube").to(device)
-    policy = PI0Policy.from_pretrained("../lerobot/outputs/train/pi0_transfer_cube/checkpoints/005000/pretrained_model").to(device)
+    # policy = PI0Policy.from_pretrained("../lerobot/outputs/train/pi0_transfer_cube/checkpoints/005000/pretrained_model").to(device)
+    policy = PI0Policy.from_pretrained("../lerobot/outputs/train/pi0_transfer_cube/checkpoints/last/pretrained_model").to(device)
+
     # policy = PI0Policy.from_pretrained("lerobot/pi0")
+
+    # Initial noise shape (action shape)
+    # TODO: This assumes batch size is 1, maybe not always true. fix as needed
+    # TODO: This is using max_action_dim, try training pi0 with lower max action dim
+    actions_shape = (1, policy.config.n_action_steps, policy.config.max_action_dim)
+
+    if fix_noise:
+        noise = torch.normal(
+                    mean=0.0,
+                    std=1.0,
+                    size=actions_shape,
+                    dtype=torch.float32,
+                    device=device,
+                )
+        # noise = torch.zeros(size=actions_shape, device=device)
+        print("setting fixed noise, this should only happen once")
 
     for rollout, seed in enumerate(seeds):
         policy.reset()
@@ -77,7 +122,18 @@ def run_basic_pi0_aloha(seeds : list[int] = [0], device : str = "cuda"):
             observation["task"] = ["transfer_cube"]
 
             with torch.inference_mode():
-                action = policy.select_action(observation)
+                # Generate initial noise randomly
+                if not fix_noise:
+                    noise = torch.normal(
+                        mean=0.0,
+                        std=1.0,
+                        size=actions_shape,
+                        dtype=torch.float32,
+                        device=device,
+                    )
+                    # noise = None
+                        
+                action = policy.select_action(observation, noise=noise.clone())
 
             # Convert to CPU / numpy.
             action = action.to("cpu").numpy()
@@ -99,7 +155,7 @@ def run_basic_pi0_aloha(seeds : list[int] = [0], device : str = "cuda"):
         imageio.mimsave(f"{video_dir_path}/{video_file_name}", frames, fps=fps)
 
 def main():
-    seeds = [0]*10
+    seeds = [4]*10
     run_basic_pi0_aloha(seeds=seeds)
 
 if __name__ == "__main__":
