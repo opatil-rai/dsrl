@@ -6,6 +6,7 @@ from lerobot.envs.utils import preprocess_observation, add_envs_task
 import torch
 import imageio
 import os
+from lerobot.constants import  OBS_STATE
 
 class Pi0EnvWrapper(gym.Env):
     def __init__(
@@ -27,9 +28,21 @@ class Pi0EnvWrapper(gym.Env):
         if self.save_frames:
             self.frames = []
 
+        # Mirror the base env's render_mode if it exists
+        self.render_mode = getattr(env, "render_mode", None)
+
+    def render(self):
+        if self.render_mode is None:
+            raise ValueError(
+                "No render_mode specified and base env does not support rendering."
+            )
+        # Forward render call to the underlying environment
+        return self.env.render()
+
     def reset(self, **kwargs):
         # TODO load gym seed if it was given at construction
         obs, info = self.env.reset(**kwargs)
+        
         # save the obs for base policy to use in next step
         self._last_obs = obs
         # reset policy
@@ -62,8 +75,21 @@ class Pi0EnvWrapper(gym.Env):
 
         images, img_masks = self.policy.prepare_images(obs)
         state = self.policy.prepare_state(obs)
+        lang_tokens, lang_masks = self.policy.prepare_language(obs)
 
-        breakpoint()
+        # TODO: These embeddings seem to include language stuff as well, probably can rmeove, check out embed_prefix for more detail.
+        prefix_embs, prefix_pad_masks, prefix_att_masks = self.policy.model.embed_prefix(
+            images, img_masks, lang_tokens, lang_masks
+        )
+        # TODO: prefix_embs have shape [B, 304, 2048] (B, num_spatial_tokens, feature_dim). I am taking mean over num_spatial to just get 2048 dim. should experiment with other approaches.
+        # TODO: The original DSRL paper trains a cnn on the images + uses last hidden state of last token, may want to try those out too.
+        mean_pool_prefix_embs = prefix_embs.mean(1)
+    
+        # include the robot state here
+        # TODO: For now, using just raw state (14 dim). The policy.model has `state_proj` where state is processed in denoise_step, could use that too
+        img_state_emb = torch.cat([mean_pool_prefix_embs,state],axis=1).detach().cpu().numpy()
+        
+        return img_state_emb, info
 
 def run_basic_pi0_aloha(seeds : list[int] = [0], device : str = "cuda"):
     video_dir_path = "aloha_pi0_videos_lastckpt_seed4_fixnoise_clone"
@@ -154,9 +180,32 @@ def run_basic_pi0_aloha(seeds : list[int] = [0], device : str = "cuda"):
         video_file_name = f"aloha_pi0_rollout{rollout}_seed{seed}.mp4"
         imageio.mimsave(f"{video_dir_path}/{video_file_name}", frames, fps=fps)
 
+def test_gym_env():
+    import gym_aloha
+    fps = 30
+    max_steps = 1000
+
+    device="cuda"
+
+    # TODO: Add insert
+    gym_kwargs = {
+        "obs_type": "pixels_agent_pos",
+        "render_mode": "rgb_array",
+    }
+    env = gym.make("gym_aloha/AlohaTransferCube-v0", **gym_kwargs)
+
+    # policy = PI0Policy.from_pretrained("BrunoM42/pi0_aloha_transfer_cube").to(device)
+    # policy = PI0Policy.from_pretrained("../lerobot/outputs/train/pi0_transfer_cube/checkpoints/005000/pretrained_model").to(device)
+    policy = PI0Policy.from_pretrained("../lerobot/outputs/train/pi0_transfer_cube/checkpoints/last/pretrained_model").to(device)
+
+    wrapped_env = Pi0EnvWrapper(env=env, policy=policy)
+    obs, info = wrapped_env.reset()
+
 def main():
-    seeds = [4]*10
-    run_basic_pi0_aloha(seeds=seeds)
+    # seeds = [4]*10
+    # run_basic_pi0_aloha(seeds=seeds)
+
+    test_gym_env()
 
 if __name__ == "__main__":
     main()
