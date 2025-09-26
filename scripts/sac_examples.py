@@ -1,4 +1,7 @@
 import gymnasium as gym
+import argparse
+import time
+from datetime import datetime
 from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
@@ -304,7 +307,8 @@ def make_env(video_folder, record_trigger, other_config):
             # options = {"reset_to_state": reset_state}
             # gym_reset_seed = 1234522325 # or None for no fixed seed
         from lerobot_dsrl import generate_steerable_diffpo_pusht_gym_env
-        env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed, desired_action_dim=other_config["desired_action_dim"])
+        env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed, desired_action_dim=other_config["desired_action_dim"],
+                                                      num_inference_steps=100)
         # make action min/max -1,1 based on desired_action_dim
         action_min = np.ones([other_config["desired_action_dim"]])*-1
         action_max = np.ones([other_config["desired_action_dim"]])
@@ -375,8 +379,35 @@ def make_env(video_folder, record_trigger, other_config):
     )
     return env
 
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description="Training DSRL SAC on push-T")
+    parser.add_argument(
+        "--task_name",
+        type=str,
+        default="pusht_latent",
+        help="Lerobot environment name (e.g., pusht_latent).",
+    )
+    parser.add_argument(
+        "--exp_name",
+        type=str,
+        default="dsrl-sac",
+        help="Experiment specific name to add to the artifacts",
+    )
+    parser.add_argument(
+        "--seeds",
+        type=int,
+        nargs="+",
+        default=[42],
+        help="List of random seeds (space separated). Example: --seed 0 42 1337",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
     # stats_window_size: default (100), determines how many episodes to go over for reporting evals like returns, success, etc.
+    args = get_args()
     cfgs = {
         "sac":
         {
@@ -457,13 +488,14 @@ if __name__ == "__main__":
 
     }
 
-    task = "pusht_latent"
+    task = args.task_name
     task_import(task)
     sac_config = cfgs["sac"][task]
     other_config = cfgs["other"][task]
 
     run = wandb.init(
         project="dsrl_sb3",
+        name='_'.join([args.exp_name,str(datetime.now())]),
         config=sac_config,
         sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
         monitor_gym=True,  # auto-upload the videos of agents playing the game
@@ -473,7 +505,6 @@ if __name__ == "__main__":
     train_record_freq = 2000
     env = make_env("train", record_trigger=train_record_freq, other_config=other_config) 
     eval_env = make_env("eval", record_trigger=1,other_config=other_config) # trigger on every step of eval, eval recording happens at eval_freq
-
     model = SAC(env=env, verbose=1, tensorboard_log=f"runs/{run.id}", **sac_config)
 
     # CALLBACKS

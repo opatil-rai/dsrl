@@ -118,7 +118,8 @@ def eval_random_policy(options, env, seeds, max_timesteps, desired_action_dim, s
         model = SAC.load(sac_path,env=wrapped_env)
 
     max_frames = max_timesteps
-    all_rollout_frames = []
+    all_episode_lengths = []
+    all_episode_successes = []
     all_episode_returns = []
 
     init_noise_generator = torch.Generator(device="cuda")
@@ -148,13 +149,24 @@ def eval_random_policy(options, env, seeds, max_timesteps, desired_action_dim, s
         
         # get frames
         # Save individual video
-        video_path = f"{video_dir_path}/episode_{rollout}_seed_{seeds[rollout]}.mp4"
-        imageio.mimsave(video_path, frames, fps=fps)
-        print(f"Saved {video_path}, terminated:{terminated}, returns: {total_rewards}")
+        if rollout < 10:
+            video_path = f"{video_dir_path}/episode_{rollout}_seed_{seeds[rollout]}.mp4"
+            imageio.mimsave(video_path, frames, fps=fps)
+            print(f"Saved {video_path}, terminated:{terminated}, returns: {total_rewards}")
 
         # save the returns
+        all_episode_lengths.append(current_step)
+        all_episode_successes.append(1 if info.get("is_success") else 0)
         all_episode_returns.append(total_rewards)
-        np.save(f"{video_dir_path}/returns.npy", all_episode_returns)
+
+    print(f"Average reward: {np.average(all_episode_returns)} / {np.std(all_episode_returns)}")
+    print(f"Average episode length: {np.average(all_episode_lengths)} / {np.std(all_episode_lengths)}")
+    print(f"Average success: {np.average(all_episode_successes)} / {np.std(all_episode_successes)}")
+
+    np.save(f"{video_dir_path}/returns.npy", all_episode_returns)
+    np.save(f"{video_dir_path}/lengths.npy", all_episode_lengths)
+    np.save(f"{video_dir_path}/successes.npy", all_episode_successes)
+
 
     #     # Pad to max length with last frame
     #     while len(frames) < max_frames:
@@ -219,7 +231,7 @@ def run_eval(desired_action_dim):
     fps = 30
 
     # list of seeds to evaluate
-    seeds = list(range(10))
+    seeds = list(range(100))
     # nested_seeds = [[x]*10 for x in range(10)]
     # seeds = [x for l in nested_seeds for x in l]
 
@@ -254,8 +266,8 @@ if __name__ == "__main__":
     ## SAC Eval stuff
     sac_model_dir = "./my_models"
     sac_ckpt = "electric_cloudv73"
-    sac_path = f"{sac_model_dir}/{sac_ckpt}"
-    # sac_path = None
+    # sac_path = f"{sac_model_dir}/{sac_ckpt}"
+    sac_path = None
 
     desired_action_dim = 2
 

@@ -348,7 +348,7 @@ class DiffpoEnvWrapper(gym.Env):
 
 
 def generate_steerable_diffpo_pusht_gym_env(
-    device: str = "cuda", scheduler_type="DDIM", options : Optional[dict] = {"reset_to_state" : np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])}, seed : Optional[int] = None, desired_action_dim=2
+    device: str = "cuda", scheduler_type="DDIM", options : Optional[dict] = {"reset_to_state" : np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])}, seed : Optional[int] = None, desired_action_dim=2, num_inference_steps=100
 ):
     """
     Returns a gym env of a pusht environment with a wrapped diffusion policy, where
@@ -388,6 +388,8 @@ def generate_steerable_diffpo_pusht_gym_env(
             steps_offset=0,
             prediction_type=policy.diffusion.config.prediction_type,  # or sample
         )
+        print(f">>>>> Using num_inference_steps of {num_inference_steps}")
+        policy.diffusion.noise_scheduler.set_timesteps(num_inference_steps=num_inference_steps)
     else:
         # DDPM is default
         pass
