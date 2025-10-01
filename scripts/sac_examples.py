@@ -5,6 +5,8 @@ from datetime import datetime
 from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
+import os
+os.environ["WANDB_MODE"]="disabled"
 import wandb
 from wandb.integration.sb3 import WandbCallback
 from gymnasium.wrappers import TimeLimit, FrameStackObservation, FlattenObservation
@@ -16,7 +18,6 @@ from gymnasium.wrappers import RescaleAction, RescaleObservation
 from gym_hil.mujoco_gym_env import MAX_GRIPPER_COMMAND
 from stable_baselines3.common.callbacks import BaseCallback
 import glob
-import os
 
 class EvalSaveCallback(EvalCallback):
     """
@@ -270,7 +271,7 @@ def task_import(task):
         import gymnasium_robotics
 
 
-def make_env(video_folder, record_trigger, other_config):
+def make_env(video_folder, record_trigger, other_config, num_inference_steps):
     # ObservationAction Normalizing wrapper
     if task == "pusht":
         env = gym.make(other_config["env_name"],render_mode="rgb_array")
@@ -308,7 +309,7 @@ def make_env(video_folder, record_trigger, other_config):
             # gym_reset_seed = 1234522325 # or None for no fixed seed
         from lerobot_dsrl import generate_steerable_diffpo_pusht_gym_env
         env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed, desired_action_dim=other_config["desired_action_dim"],
-                                                      num_inference_steps=100)
+                                                      num_inference_steps=num_inference_steps)
         # make action min/max -1,1 based on desired_action_dim
         action_min = np.ones([other_config["desired_action_dim"]])*-1
         action_max = np.ones([other_config["desired_action_dim"]])
@@ -394,6 +395,12 @@ def get_args():
         type=str,
         default="dsrl-sac",
         help="Experiment specific name to add to the artifacts",
+    )
+    parser.add_argument(
+        "--num_inference_steps",
+        type=int,
+        default=100,
+        help="Number of DDIM inference steps",
     )
     parser.add_argument(
         "--seeds",
@@ -494,7 +501,7 @@ if __name__ == "__main__":
     other_config = cfgs["other"][task]
 
     run = wandb.init(
-        project="dsrl_sb3",
+        project="dsrl_env",
         name='_'.join([args.exp_name,str(datetime.now())]),
         config=sac_config,
         sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
@@ -503,8 +510,8 @@ if __name__ == "__main__":
     )
 
     train_record_freq = 2000
-    env = make_env("train", record_trigger=train_record_freq, other_config=other_config) 
-    eval_env = make_env("eval", record_trigger=1,other_config=other_config) # trigger on every step of eval, eval recording happens at eval_freq
+    env = make_env("train", record_trigger=train_record_freq, other_config=other_config, num_inference_steps=args.num_inference_steps) 
+    eval_env = make_env("eval", record_trigger=1,other_config=other_config, num_inference_steps=args.num_inference_steps) # trigger on every step of eval, eval recording happens at eval_freq
     model = SAC(env=env, verbose=1, tensorboard_log=f"runs/{run.id}", **sac_config)
 
     # CALLBACKS

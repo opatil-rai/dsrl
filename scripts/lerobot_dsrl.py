@@ -3,6 +3,7 @@ from gymnasium import spaces
 import numpy as np
 import torch
 import types
+import wandb
 
 from lerobot.policies.diffusion.modeling_diffusion import (
     DiffusionPolicy,
@@ -25,6 +26,18 @@ from lerobot.policies.utils import (
     get_dtype_from_parameters,
     populate_queues,
 )
+# import time
+# import torch
+# from contextlib import contextmanager
+
+# @contextmanager
+# def timer(use_cuda=False):
+#     if use_cuda:
+#         torch.cuda.synchronize()
+#     t0 = time.perf_counter()
+#     yield lambda: (time.perf_counter() - t0)  # gives you a function to call for elapsed time
+#     if use_cuda:
+#         torch.cuda.synchronize()
 
 """
 python diffpo_wrapped_gym.py
@@ -264,6 +277,8 @@ class DiffpoEnvWrapper(gym.Env):
             self.frames = []
 
         cumulative_rewards = 0
+        # diffpo_inf_time = 0
+        # env_step_time = 0
         for i_step in range(self.n_action_steps):
             obs = preprocess_observation(self._last_obs)
             obs = {
@@ -273,12 +288,17 @@ class DiffpoEnvWrapper(gym.Env):
                 for k, v in obs.items()
             }
 
+            torch.cuda.synchronize()
+            # with timer(use_cuda=True) as inf_t:
             with torch.inference_mode():
                 action = self.policy.select_action(obs)
+            # diffpo_inf_time +=inf_t()
 
             action = action.to("cpu").numpy().squeeze(0)
 
+            # with timer() as env_t:
             obs, reward, terminated, truncated, info = self.env.step(action)
+            # env_step_time += env_t()
 
             # add latest obs
             if self.save_frames:
@@ -344,6 +364,7 @@ class DiffpoEnvWrapper(gym.Env):
         # TODO: The truncated comes from the base env, but I think pusht_env always return Fales for truncated (i.e: no timeouts).
         # If we do get timeouts in the env, we should track that correctly + make critic update take it into account (i.e: do bootstrapping if truncated=true, unlike no bootstrapping when terminated=true but truncated=false)
         # TODO: Returns info dict of last step, is that sufficient?
+        # wandb.log({"diffpo_inf_time":diffpo_inf_time, "env_step_time":env_step_time})
         return global_cond, cumulative_rewards, terminated, truncated, info
 
 
@@ -389,7 +410,7 @@ def generate_steerable_diffpo_pusht_gym_env(
             prediction_type=policy.diffusion.config.prediction_type,  # or sample
         )
         print(f">>>>> Using num_inference_steps of {num_inference_steps}")
-        policy.diffusion.noise_scheduler.set_timesteps(num_inference_steps=num_inference_steps)
+        policy.diffusion.num_inference_steps = num_inference_steps
     else:
         # DDPM is default
         pass
