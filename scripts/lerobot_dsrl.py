@@ -111,7 +111,8 @@ class DiffpoEnvWrapper(gym.Env):
         seed : Optional[int] = None,
         success_threshold: Optional[float] = 0.95,
         save_frames: bool = True,
-        desired_action_dim = 2
+        desired_action_dim = 2,
+        noise_factorization=None
     ):
         super().__init__()
 
@@ -181,6 +182,7 @@ class DiffpoEnvWrapper(gym.Env):
         self.policy.diffusion.conditional_sample = types.MethodType(
             control_conditional_sample, self.policy.diffusion
         )
+        self.noise_factorization=noise_factorization
 
     def render(self):
         if self.render_mode is None:
@@ -267,8 +269,13 @@ class DiffpoEnvWrapper(gym.Env):
         In future, just maintain my own queue and call generate_actions directly.
 
         """
-        if self.desired_action_dim >= 1: # need to do tiling
-            _action = self.expand_action(_action, self.action_chunk_dim)
+        if self.noise_factorization == "sum_outer_prod":
+            _action = np.outer(_action[:2], _action[2:])
+            _action = np.squeeze(_action.reshape(self.action_chunk_dim, -1), axis=-1)
+        else:
+            if self.desired_action_dim >= 1: # need to do tiling
+                _action = self.expand_action(_action, self.action_chunk_dim)
+        
         # set policy.selected_noise_sample from _action, which policy will use
         self.policy.diffusion.selected_noise_sample = _action
 
@@ -369,7 +376,8 @@ class DiffpoEnvWrapper(gym.Env):
 
 
 def generate_steerable_diffpo_pusht_gym_env(
-    device: str = "cuda", scheduler_type="DDIM", options : Optional[dict] = {"reset_to_state" : np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])}, seed : Optional[int] = None, desired_action_dim=2, num_inference_steps=100
+    device: str = "cuda", scheduler_type="DDIM", options : Optional[dict] = {"reset_to_state" : np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])}, seed : Optional[int] = None, 
+    desired_action_dim=2, num_inference_steps=100, noise_factorization=None
 ):
     """
     Returns a gym env of a pusht environment with a wrapped diffusion policy, where
@@ -416,7 +424,7 @@ def generate_steerable_diffpo_pusht_gym_env(
         pass
 
     # Wrap the env
-    simple_wrapped_env = DiffpoEnvWrapper(env, policy, options, seed, desired_action_dim=desired_action_dim)
+    simple_wrapped_env = DiffpoEnvWrapper(env, policy, options, seed, desired_action_dim=desired_action_dim, noise_factorization=noise_factorization)
     # check_env_spaces(simple_wrapped_env)
     # wrapped_env = SerlTorchObsWrapper(simple_wrapped_env)
     # check_env_spaces(wrapped_env)

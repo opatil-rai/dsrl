@@ -6,7 +6,7 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
 import os
-os.environ["WANDB_MODE"]="disabled"
+# os.environ["WANDB_MODE"]="disabled"
 import wandb
 from wandb.integration.sb3 import WandbCallback
 from gymnasium.wrappers import TimeLimit, FrameStackObservation, FlattenObservation
@@ -271,7 +271,7 @@ def task_import(task):
         import gymnasium_robotics
 
 
-def make_env(video_folder, record_trigger, other_config, num_inference_steps):
+def make_env(video_folder, record_trigger, other_config, num_inference_steps, noise_factorization):
     # ObservationAction Normalizing wrapper
     if task == "pusht":
         env = gym.make(other_config["env_name"],render_mode="rgb_array")
@@ -307,12 +307,18 @@ def make_env(video_folder, record_trigger, other_config, num_inference_steps):
             # reset_state = np.array([314, 201, 187.21077193, 275.01629149, np.pi / 4.0])
             # options = {"reset_to_state": reset_state}
             # gym_reset_seed = 1234522325 # or None for no fixed seed
+        
         from lerobot_dsrl import generate_steerable_diffpo_pusht_gym_env
-        env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed, desired_action_dim=other_config["desired_action_dim"],
-                                                      num_inference_steps=num_inference_steps)
+        if noise_factorization:
+            d_act_d = 18
+        else:
+            d_act_d = other_config["desired_action_dim"]
+        
+        env = generate_steerable_diffpo_pusht_gym_env(device=device, options=options, seed=gym_reset_seed, desired_action_dim=d_act_d,
+                                                      num_inference_steps=num_inference_steps, noise_factorization=noise_factorization)
         # make action min/max -1,1 based on desired_action_dim
-        action_min = np.ones([other_config["desired_action_dim"]])*-1
-        action_max = np.ones([other_config["desired_action_dim"]])
+        action_min = np.ones([d_act_d])*-1
+        action_max = np.ones([d_act_d])
         # linearlly normalize obs/action to [-1,1]
         env = RescaleAction(env, min_action=action_min, max_action=action_max)
         env = TimeLimit(env, max_episode_steps=50)
@@ -401,6 +407,12 @@ def get_args():
         type=int,
         default=100,
         help="Number of DDIM inference steps",
+    )
+    parser.add_argument(
+        "--noise_factorization",
+        type=str,
+        default=None,
+        help="If to factorize the noise matrix",
     )
     parser.add_argument(
         "--seeds",
@@ -510,8 +522,8 @@ if __name__ == "__main__":
     )
 
     train_record_freq = 2000
-    env = make_env("train", record_trigger=train_record_freq, other_config=other_config, num_inference_steps=args.num_inference_steps) 
-    eval_env = make_env("eval", record_trigger=1,other_config=other_config, num_inference_steps=args.num_inference_steps) # trigger on every step of eval, eval recording happens at eval_freq
+    env = make_env("train", record_trigger=train_record_freq, other_config=other_config, num_inference_steps=args.num_inference_steps, noise_factorization=args.noise_factorization) 
+    eval_env = make_env("eval", record_trigger=1,other_config=other_config, num_inference_steps=args.num_inference_steps, noise_factorization=args.noise_factorization) # trigger on every step of eval, eval recording happens at eval_freq
     model = SAC(env=env, verbose=1, tensorboard_log=f"runs/{run.id}", **sac_config)
 
     # CALLBACKS
