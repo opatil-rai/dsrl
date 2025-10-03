@@ -26,6 +26,7 @@ lerobot/
 runs/
 videos/
 eval_videos/
+results
 
 # Setuptools distribution and build folders.
 /dist/

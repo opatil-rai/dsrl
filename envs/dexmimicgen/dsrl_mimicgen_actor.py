@@ -1,14 +1,22 @@
+"""For deterministic object placement, modify dexmimicgen environments to collapse the sampling range
+and set the initialization noise to None"""
+import json
+import os
 import math
 import time
 import torch
+import h5py
 from collections import defaultdict, deque
 from copy import deepcopy
 from typing import Any, Deque
-
+import random
+import gymnasium as gym
 import numpy as np
 from einops import rearrange
+
+from visuomotor.simulation.async_vector_env import AsyncVectorEnv
 # from visuomotor.data.rotation_transformer import RotationTransformer
-from visuomotor.simulation.mimicgen_actor import MimicgenActor
+from visuomotor.simulation.mimicgen_actor import MimicgenActor, MimicgenEnvWrapper
 from visuomotor.simulation.simulation_base import shift_observation_window_by_one
 
 
@@ -215,3 +223,137 @@ class DSRLMimicgenActor(MimicgenActor):
         return results
 
 
+
+    def setup_env(self, base_bucket: str) -> gym.Env:
+        # This import is required to register the mimicgen and dexmimicgen environments
+        if self.env_type == "mimicgen":
+            import mimicgen  # noqa: F401
+        elif self.env_type == "dexmimicgen":
+            import dexmimicgen  # noqa: F401
+        else:
+            raise ValueError(
+                f"Wrong env_type in simulation config: {self.env_type}, only `mimicgen` and `dexmimicgen` are available"
+            )
+        import robomimic.utils.env_utils as EnvUtils
+        import robomimic.utils.obs_utils as ObsUtils
+
+        # change from vpl
+        env_metadata = get_env_metadata_from_dataset(dataset_path="/lam-248-lambdafs/teams/proj-compose/opatil/datasets/two_arm_threading.hdf5")
+        self.task_description = "dexmimicgen"
+
+        obs_keys = self.config.data.obs_keys.visual
+        self.use_image_obs = True if "color" in obs_keys or "point_cloud" in obs_keys else False
+        # We need depth in order to generate the point clouds
+        self.use_depth_obs = True if "depth" in obs_keys or "point_cloud" in obs_keys else False
+
+        env_metadata["env_kwargs"]["camera_depths"] = self.use_depth_obs
+        env_metadata["env_kwargs"]["camera_names"] = self.config.simulation.get(
+            "sim_cameras", ["agentview", "robot0_eye_in_hand"]
+        )
+        env_metadata["env_kwargs"]["use_object_obs"] = False
+        if self.abs_action:
+            env_metadata["env_kwargs"]["controller_configs"]["control_delta"] = False
+            env_metadata["env_kwargs"]["controller_configs"]["input_type"] = "absolute"
+
+        # This key in the dataset metadata breaks robomimic so directly removing it
+        if "env_lang" in env_metadata["env_kwargs"]:
+            env_metadata["env_kwargs"].pop("env_lang")
+
+        if self.env_type == "mimicgen" and "point_cloud" in self.obs_visual:
+            from visuomotor.simulation.pointcloud_robomimic_env import PointCloudRobomimicEnv
+
+            env_class = PointCloudRobomimicEnv
+            # we cannot run_check_observation_space if using point_cloud because of discrepancy in
+            # `observation_spaces` between the env and the dummy_env making a check fail even though the sim
+            # will run fine
+            self.run_check_observation_space = False
+        else:
+            env_class = None
+
+        visual_obs_shapes = self.get_visual_obs_shapes(env_metadata["env_kwargs"]["camera_names"])
+
+        # load data processing version which matches the input data
+        def env_fn() -> MimicgenEnvWrapper:
+            print("about to create env")
+            env = EnvUtils.create_env_for_data_processing(
+                env_class=env_class,
+                env_meta=env_metadata,
+                camera_names=env_metadata["env_kwargs"]["camera_names"],
+                camera_height=env_metadata["env_kwargs"]["camera_heights"],
+                camera_width=env_metadata["env_kwargs"]["camera_widths"],
+                reward_shaping=env_metadata["env_kwargs"]["reward_shaping"],
+                render=False,
+                render_offscreen=True,
+                use_image_obs=self.use_image_obs,
+                use_depth_obs=self.use_depth_obs,
+            )
+            print("created env in worker")
+            env = MimicgenEnvWrapper(env, visual_obs_shapes=visual_obs_shapes)
+            print("wrapped env")
+            return env
+
+        def dummy_env_fn() -> MimicgenEnvWrapper:
+            print("about to create env in dummy")
+            env = EnvUtils.create_env_for_data_processing(
+                env_class=env_class,
+                env_meta=env_metadata,
+                camera_names=env_metadata["env_kwargs"]["camera_names"],
+                camera_height=env_metadata["env_kwargs"]["camera_heights"],
+                camera_width=env_metadata["env_kwargs"]["camera_widths"],
+                reward_shaping=env_metadata["env_kwargs"]["reward_shaping"],
+                render=False,
+                render_offscreen=False,
+                use_image_obs=False,
+                use_depth_obs=False,
+            )
+            env = MimicgenEnvWrapper(env, visual_obs_shapes=visual_obs_shapes, dummy=True)
+            return env
+
+        self.image_keys = sorted([f"{camera_name}_image" for camera_name in env_metadata["env_kwargs"]["camera_names"]])
+
+        spec = dict(
+            obs=dict(
+                low_dim=["robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos"],
+                rgb=self.image_keys,
+            ),
+        )
+        ObsUtils.initialize_obs_utils_with_obs_specs(obs_modality_specs=spec)
+
+        print("starting async envs")
+        if self.batched:
+            env = AsyncVectorEnv(
+                [env_fn] * self.num_envs,
+                dummy_env_fn=dummy_env_fn,
+                run_check_observation_space=self.run_check_observation_space,
+            )
+        else:
+            env = env_fn()
+
+        print("inited environments")
+        # We have to manually set the seed here, otherwise each sim worker will have the same seed
+        env.seed(random.randint(0, 2**31))
+
+        return env
+
+def get_env_metadata_from_dataset(dataset_path, ds_format="robomimic"):
+    """
+    Retrieves env metadata from dataset.
+
+    Args:
+        dataset_path (str): path to dataset
+
+    Returns:
+        env_meta (dict): environment metadata. Contains 3 keys:
+
+            :`'env_name'`: name of environment
+            :`'type'`: type of environment, should be a value in EB.EnvType
+            :`'env_kwargs'`: dictionary of keyword arguments to pass to environment constructor
+    """
+    dataset_path = os.path.expanduser(dataset_path)
+    f = h5py.File(dataset_path, "r")
+    if ds_format == "robomimic":
+        env_meta = json.loads(f["data"].attrs["env_args"])
+    else:
+        raise ValueError
+    f.close()
+    return env_meta

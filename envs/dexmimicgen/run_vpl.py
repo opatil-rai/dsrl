@@ -6,7 +6,7 @@ from pathlib import Path
 from copy import deepcopy
 import cv2
 import numpy as np
-import imageio
+import imageio as iio
 import torch
 from tqdm import tqdm
 
@@ -18,28 +18,15 @@ import lightning as L
 
 
 def save_video(frames, filename="video.mp4", fps=30):
-    # Accept (N,C,H,W) or (N,H,W,C) in RGB
     if frames.ndim != 4: raise ValueError("frames must be 4D")
     if frames.shape[1] == 3 and frames.shape[-1] != 3:
-        frames = frames.transpose(0, 2, 3, 1)
-    frames = np.clip(frames, 0, 255).astype(np.uint8)
-
-    H, W = frames.shape[1], frames.shape[2]
-    H2, W2 = H - (H % 2), W - (W % 2)  # crop to even dims for H.264
-    frames = frames[:, :H2, :W2, :]
-
-    fourcc = cv2.VideoWriter_fourcc(*"avc1")
-    out = cv2.VideoWriter(filename, fourcc, fps, (W2, H2))
-    if not out.isOpened():  # fallback if H.264 unavailable
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        out = cv2.VideoWriter(filename, fourcc, fps, (W2, H2))
-
-    for f in frames:
-        out.write(f[..., ::-1])  # RGB -> BGR
-
-    out.release()
-    print(f"Video saved as {filename}")
-
+        frames = frames.transpose(0, 2, 3, 1)        # (N,C,H,W)->(N,H,W,C)
+    frames = np.clip(frames, 0, 255).astype(np.uint8) # RGB uint8
+    H, W = frames.shape[1:3]
+    frames = frames[:, :H - H % 2, :W - W % 2, :]     # even dims for H.264
+    with iio.get_writer(filename, fps=fps, codec="libx264",
+                        format="FFMPEG", pixelformat="yuv420p") as w:
+        for f in frames: w.append_data(f)
 
 def sanitize_string_for_path(s: str) -> str:
     return s.replace(":", "-")
@@ -112,7 +99,6 @@ def run_sim_for_policy(
 
     ma.pl_module.config.simulation.save_videos = True
     ma.num_episodes = 1
-    ma.env.env.deterministic_reset=True # turn off variation
     sucesses: list[bool] = []
     all_frames = []
     results_dir.mkdir(exist_ok=True, parents=True)
@@ -129,6 +115,7 @@ def run_sim_for_policy(
     # set the noise and its mode
     init_noise = None
     if init_noise_mode == "same_noise_as_first":
+        print(">>> Using same diffusion noise for all episodes")
         init_noise = torch.randn((batch_size, horizon, action_dim))
 
     for i in tqdm(range(num_episodes)):
@@ -173,7 +160,7 @@ def run_sim_for_policy(
         ).astype(np.uint8)
         overlay_frames.append(overlay)
 
-    imageio.mimsave(f"{results_dir}/videos/overlay.mp4", np.swapaxes(np.array(overlay_frames),1, -1), fps=30)
+    iio.mimsave(f"{results_dir}/videos/overlay.mp4", np.swapaxes(np.array(overlay_frames),1, -1), fps=30)
     print(f"successes: {sucesses}")
 
 
@@ -191,7 +178,7 @@ def main() -> None:
         type=str,
         default="bdaii/two_arm_threading-lrenaux/diffpo-2jkfbrtz-pnb9crec:v4",
     )
-    parser.add_argument("--num-episodes", type=int, default=2)
+    parser.add_argument("--num-episodes", type=int, default=10)
     parser.add_argument("--num_steps", type=int, default=None)
     parser.add_argument("--env-name", type=str, default="dexmimicgen")
     parser.add_argument("--task-index", type=int, default=0)

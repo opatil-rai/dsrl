@@ -7,6 +7,9 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
 import os
 # os.environ["WANDB_MODE"]="disabled"
+os.environ["WANDB_INIT_TIMEOUT"]="600"
+os.environ["WANDB_START_METHOD"]="thread"
+
 import wandb
 from wandb.integration.sb3 import WandbCallback
 from gymnasium.wrappers import TimeLimit, FrameStackObservation, FlattenObservation
@@ -413,6 +416,7 @@ def get_args():
         type=str,
         default=None,
         help="If to factorize the noise matrix",
+        choices=["sum_outer_prod", None]
     )
     parser.add_argument(
         "--seeds",
@@ -521,14 +525,14 @@ if __name__ == "__main__":
         # save_code=True,  # optional
     )
 
-    train_record_freq = 2000
+    train_record_freq = 5000
     env = make_env("train", record_trigger=train_record_freq, other_config=other_config, num_inference_steps=args.num_inference_steps, noise_factorization=args.noise_factorization) 
     eval_env = make_env("eval", record_trigger=1,other_config=other_config, num_inference_steps=args.num_inference_steps, noise_factorization=args.noise_factorization) # trigger on every step of eval, eval recording happens at eval_freq
     model = SAC(env=env, verbose=1, tensorboard_log=f"runs/{run.id}", **sac_config)
 
     # CALLBACKS
     # eval callback
-    eval_freq = 5000
+    eval_freq = 10000
     eval_callback = EvalSaveCallback(
         eval_env,
         best_model_save_path="./logs/checkpoints",
