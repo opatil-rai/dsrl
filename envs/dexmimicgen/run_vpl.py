@@ -13,7 +13,7 @@ from tqdm import tqdm
 from visuomotor.models.model_registry import REGISTRY
 from visuomotor.models.protocols import Policy
 from visuomotor.ray_train.simulation.constants import MIMICGEN_BENCHMARK_TASKS, MIMICGEN_TASK_STEPS
-from dsrl_mimicgen_actor import DSRLMimicgenActor
+from mimicgen_env import MimicgenEnv
 import lightning as L
 
 
@@ -66,7 +66,9 @@ def run_sim_for_policy(
     init_noise_mode="different"
 ) -> None:
 
-    policy.config.num_inference_steps=10
+    policy.config.num_inference_steps=10 # hardcoding
+    policy.config.simulation.save_videos = True
+
     results_dir = Path(results_dir)
     if num_envs_per_actor is not None:
         policy.config.simulation.num_envs_per_actor = num_envs_per_actor
@@ -88,17 +90,15 @@ def run_sim_for_policy(
     if "metadata_gcs_prefix" not in policy.config.simulation:
         policy.config.simulation["metadata_gcs_prefix"] = "mimicgen_equidiff_pc_abs/core/"
 
-    ma = DSRLMimicgenActor(
-        pl_module=policy,  # type: ignore
+    mg_env = MimicgenEnv(
         config=policy.config,
         env_name=env_name,
         current_epoch=99,
         task_index=task_index,
         num_steps=num_steps,
     )
-
-    ma.pl_module.config.simulation.save_videos = True
-    ma.num_episodes = 1
+    mg_env.num_episodes = 1
+    
     sucesses: list[bool] = []
     all_frames = []
     results_dir.mkdir(exist_ok=True, parents=True)
@@ -108,9 +108,9 @@ def run_sim_for_policy(
 
     # save a single initial noise
     batch_size = 1 # # can be 1 for viz
-    horizon = ma.config.action_head.horizon
-    action_dim = ma.config.action_head.action_dim
-    max_frames = ma.num_steps
+    horizon = mg_env.config.action_head.horizon
+    action_dim = mg_env.config.action_head.action_dim
+    max_frames = mg_env.num_steps
 
     # set the noise and its mode
     init_noise = None
@@ -119,7 +119,7 @@ def run_sim_for_policy(
         init_noise = torch.randn((batch_size, horizon, action_dim))
 
     for i in tqdm(range(num_episodes)):
-        results = ma.run_simulation(init_noise_mode=init_noise_mode, init_noise=init_noise)
+        results = mg_env.run_simulation(pl_module=policy, init_noise_mode=init_noise_mode, init_noise=init_noise)
         success = results["success_count"]
         print(f"Success {i}: {success}")
         with open(successes_path, "a") as f:
