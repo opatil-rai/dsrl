@@ -13,7 +13,7 @@ from tqdm import tqdm
 from visuomotor.models.model_registry import REGISTRY
 from visuomotor.models.protocols import Policy
 from visuomotor.ray_train.simulation.constants import MIMICGEN_BENCHMARK_TASKS, MIMICGEN_TASK_STEPS
-from mimicgen_env import MimicgenEnv
+from envs.dexmimicgen.dexmimicgen_env import DexMimicGenEnv
 import lightning as L
 
 
@@ -90,7 +90,7 @@ def run_sim_for_policy(
     if "metadata_gcs_prefix" not in policy.config.simulation:
         policy.config.simulation["metadata_gcs_prefix"] = "mimicgen_equidiff_pc_abs/core/"
 
-    mg_env = MimicgenEnv(
+    mg_env = DexMimicGenEnv(
         config=policy.config,
         env_name=env_name,
         current_epoch=99,

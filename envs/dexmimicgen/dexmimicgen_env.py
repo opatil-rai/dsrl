@@ -1,5 +1,4 @@
-"""Modified from visuomotor/mimicgen_actor.py.
-MimicgenEnvWrapper has been heavily modified to return processed observations"""
+"""Modified from visuomotor/mimicgen_actor.py."""
 
 import json
 import os
@@ -20,7 +19,7 @@ from visuomotor.utils.paths import get_base_gcs_path
 from vpl_simulation_base import VPLSimulationBase
 
 
-class MimicgenEnvWrapper(gym.Env):
+class DMGEnvWrapper(gym.Env):
 
     def __init__(self, env: gym.Env, visual_obs_shapes: dict, dummy: bool = False):
         self.env = env
@@ -123,7 +122,7 @@ def get_env_metadata_from_dataset(dataset_path, ds_format="robomimic"):
     return env_meta
 
 
-class MimicgenEnv(VPLSimulationBase):
+class DexMimicGenEnv(VPLSimulationBase):
 
     def setup_env(self, base_bucket: str) -> gym.Env:
         # This import is required to register the mimicgen and dexmimicgen environments
@@ -173,7 +172,7 @@ class MimicgenEnv(VPLSimulationBase):
         visual_obs_shapes = self.get_visual_obs_shapes(env_metadata["env_kwargs"]["camera_names"])
 
         # load data processing version which matches the input data
-        def env_fn() -> MimicgenEnvWrapper:
+        def env_fn() -> DMGEnvWrapper:
             print("about to create env")
             env = EnvUtils.create_env_for_data_processing(
                 env_class=env_class,
@@ -188,11 +187,11 @@ class MimicgenEnv(VPLSimulationBase):
                 use_depth_obs=self.use_depth_obs,
             )
             print("created env in worker")
-            env = MimicgenEnvWrapper(env, visual_obs_shapes=visual_obs_shapes)
+            env = DMGEnvWrapper(env, visual_obs_shapes=visual_obs_shapes)
             print("wrapped env")
             return env
 
-        def dummy_env_fn() -> MimicgenEnvWrapper:
+        def dummy_env_fn() -> DMGEnvWrapper:
             print("about to create env in dummy")
             env = EnvUtils.create_env_for_data_processing(
                 env_class=env_class,
@@ -206,7 +205,7 @@ class MimicgenEnv(VPLSimulationBase):
                 use_image_obs=False,
                 use_depth_obs=False,
             )
-            env = MimicgenEnvWrapper(env, visual_obs_shapes=visual_obs_shapes, dummy=True)
+            env = DMGEnvWrapper(env, visual_obs_shapes=visual_obs_shapes, dummy=True)
             return env
 
         self.image_keys = sorted([f"{camera_name}_image" for camera_name in env_metadata["env_kwargs"]["camera_names"]])
@@ -289,5 +288,5 @@ class MimicgenEnv(VPLSimulationBase):
         self.is_success()
         obs["task_description"] = self.task_description
 
-        
+
         return obs, reward, done
