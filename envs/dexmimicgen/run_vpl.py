@@ -4,7 +4,6 @@ import argparse
 import multiprocessing
 from pathlib import Path
 from copy import deepcopy
-import cv2
 import numpy as np
 import imageio as iio
 import torch
@@ -13,7 +12,7 @@ from tqdm import tqdm
 from visuomotor.models.model_registry import REGISTRY
 from visuomotor.models.protocols import Policy
 from visuomotor.ray_train.simulation.constants import MIMICGEN_BENCHMARK_TASKS, MIMICGEN_TASK_STEPS
-from envs.dexmimicgen.dexmimicgen_env import DexMimicGenEnv
+from dexmimicgen_env import DexMimicGenEnv
 import lightning as L
 
 

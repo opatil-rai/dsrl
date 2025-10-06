@@ -150,6 +150,7 @@ class VPLSimulationBase(gym.Env):
 
     def run_simulation(self, pl_module, init_noise_mode="different", init_noise=None) -> dict[str, Any]:
         """
+        Purposefully avoid self.step and self.reset here so that we can process obs in those calls if required.
         Runs the simulation loop while collecting simple profiling stats (mean/std)
         for various operations. Prints the results at the end if profiling is enabled.
         """

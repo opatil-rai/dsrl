@@ -3,6 +3,7 @@
 import json
 import os
 import random
+import sys
 from typing import Any, Optional
 import h5py
 import google.auth
@@ -16,6 +17,7 @@ from numpy import typing as npt
 
 from visuomotor.simulation.async_vector_env import AsyncVectorEnv
 from visuomotor.utils.paths import get_base_gcs_path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from vpl_simulation_base import VPLSimulationBase
 
 
