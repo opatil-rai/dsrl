@@ -12,7 +12,6 @@ def build_dmg_env(
     env_type: str,
     dataset_path: str,
     config,
-    abs_action: bool,
 ):
     """Standalone builder for MimicGen / DexMimicGen environments.
     Parameters
@@ -23,24 +22,11 @@ def build_dmg_env(
         Path to robomimic-format dataset to read env metadata from.
     config : Any
         Full config object (expects .data.obs_keys.visual and .simulation fields).
-    abs_action : bool
-        Whether to force absolute action controller behavior.
-    batched : bool
-        Whether to create an AsyncVectorEnv.
-    num_envs : int
-        Number of parallel envs if batched.
-    get_visual_obs_shapes : Callable
-        Function to compute visual obs shapes given camera names.
-    run_check_observation_space : bool, default True
-        Passed through to AsyncVectorEnv.
 
     Returns
     -------
     env : gym.Env
         Constructed (possibly vectorized) environment.
-    attrs : dict
-        Dictionary with keys: task_description, use_image_obs, use_depth_obs,
-        image_keys, run_check_observation_space.
     """
     import robomimic.utils.env_utils as EnvUtils
     import robomimic.utils.obs_utils as ObsUtils
@@ -64,6 +50,7 @@ def build_dmg_env(
         "sim_cameras", ["agentview", "robot0_eye_in_hand"]
     )
     env_metadata["env_kwargs"]["use_object_obs"] = False
+    abs_action = config.simulation.get("abs_action", False)
     if abs_action:
         env_metadata["env_kwargs"]["controller_configs"]["control_delta"] = False
         env_metadata["env_kwargs"]["controller_configs"]["input_type"] = "absolute"

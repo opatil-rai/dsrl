@@ -182,9 +182,8 @@ if __name__ == "__main__":
                 env_type="dexmimicgen",
                 dataset_path=dataset_path,
                 config=local_cfg,       
-                abs_action=local_cfg.simulation.get("abs_action", False),
             )
-            env = ActionChunkWrapper(env, local_cfg, max_episode_steps=num_steps)
+            env = ActionChunkWrapper(env, local_cfg)
             # env = TimeLimit(env, max_episode_steps=50)
             return Monitor(env)
         return _thunk

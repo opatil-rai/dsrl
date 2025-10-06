@@ -35,8 +35,7 @@ class ActionChunkWrapper(gym.Env):
     def __init__(self, env, cfg, max_episode_steps=300):
         self.env = env
         self.max_episode_steps = max_episode_steps
-        act_steps = cfg.data.horizon
-        self.act_steps = int(act_steps)
+        self.act_steps = int(cfg.data.horizon)
 
         base_low = env.action_space.low
         base_high = env.action_space.high
@@ -48,6 +47,13 @@ class ActionChunkWrapper(gym.Env):
         # Use underlying observation space (don't assume cfg.obs_dim)
         self.observation_space = env.observation_space
         self.count = 0
+
+        self.num_steps = cfg.simulation.get("num_steps", 100)
+        self.num_episodes = cfg.simulation.get("num_episodes", 10) // cfg.simulation.get(
+            "ray_parallel_actors", 1
+        )
+        self.action_execution_steps = cfg.simulation.get("action_execution_steps", 1)
+
 
     def reset(self, seed=None):
         obs = self.env.reset(seed=seed)
@@ -62,7 +68,7 @@ class ActionChunkWrapper(gym.Env):
         done_ = []
         info_ = []
         done_i = False
-        for i in range(action.shape[0]):
+        for i in range(self.action_execution_steps):
             self.count += 1
             obs_i, reward_i, done_i, info_i = self.env.step(action[i])
             obs_.append(obs_i)
