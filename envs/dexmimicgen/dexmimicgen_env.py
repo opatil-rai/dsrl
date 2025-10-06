@@ -65,13 +65,14 @@ class DMGEnvWrapper(gym.Env):
             this_space = spaces.Box(low=min_value, high=max_value, shape=shape, dtype=np.float32)
             observation_space[key] = this_space
         self.observation_space = observation_space
+        # Advertise rgb_array capability for video recorder wrappers
+        self.render_mode = "rgb_array"
 
     def seed(self, seed: int) -> None:
         np.random.seed(seed=seed)
 
     def is_success(self) -> bool | list[bool]:
         success = self.env.is_success()
-
         return success
 
     def get_observation(self) -> dict:
@@ -79,7 +80,6 @@ class DMGEnvWrapper(gym.Env):
         if self.dummy:
             for observation_name, shape in self.visual_obs_shapes.items():
                 obs[observation_name] = np.zeros(shape)
-
         return obs
 
     def reset(self, seed: Optional[int] = None) -> dict:
@@ -89,7 +89,6 @@ class DMGEnvWrapper(gym.Env):
         if self.dummy:
             for observation_name, shape in self.visual_obs_shapes.items():
                 obs[observation_name] = np.zeros(shape)
-
         return obs
 
     def step(self, *args: Any) -> tuple[dict, float, dict, bool]:
@@ -100,8 +99,21 @@ class DMGEnvWrapper(gym.Env):
 
         return obs, reward, info, done
 
+    def render(self, mode: str = "rgb_array"):
+        """Return an RGB array (H,W,3) for video recording."""
+        obs = self.get_observation()
+        # Pick first image key if available
+        image_keys = [k for k in obs.keys() if k.endswith("image")]
+        if image_keys:
+            frame = obs[image_keys[0]]
+            # Ensure uint8 0-255 if needed
+            if frame.dtype != np.uint8:
+                frame = (np.clip(frame, 0, 1) * 255).astype(np.uint8)
+            return frame
+        return None
+
 def get_env_metadata_from_dataset(dataset_path, ds_format="robomimic"):
-    """
+    """s
     Retrieves env metadata from dataset.
 
     Args:

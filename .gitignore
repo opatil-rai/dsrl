@@ -27,6 +27,7 @@ runs/
 videos/
 eval_videos/
 results
+artifacts
 
 # Setuptools distribution and build folders.
 /dist/
