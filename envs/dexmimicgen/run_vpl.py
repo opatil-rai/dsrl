@@ -175,7 +175,7 @@ def main() -> None:
     parser.add_argument(
         "--checkpoint-name",
         type=str,
-        default="bdaii/two_arm_threading-lrenaux/diffpo-2jkfbrtz-pnb9crec:v4",
+        default="bdaii/two_arm_threading-lrenaux/diffpo-e8jwrx3m-uay94zwk:v4",
     )
     parser.add_argument("--num-episodes", type=int, default=10)
     parser.add_argument("--num_steps", type=int, default=None)

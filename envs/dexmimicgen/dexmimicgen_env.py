@@ -1,4 +1,9 @@
-"""Modified from visuomotor/mimicgen_actor.py."""
+"""
+Modified from visuomotor/mimicgen_actor.py.
+How things flow:
+MujocoEnv -> ... -> TwoArmThreadingEnv (Dexmimicgen) -> RobosuiteEnv (Robomimic) -> DexMimicGenEnv (VPLSimulationBase; Optional) -> DMGEnvWrapper
+- is_success returns { "task" : succ } from RobosuiteEnv, that internally calls _check_success => done is just a progress indicator
+"""
 
 import json
 import os

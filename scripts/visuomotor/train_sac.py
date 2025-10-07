@@ -4,6 +4,7 @@ TODO:
 """
 
 import os
+os.environ["MUJOCO_GL"] = "egl"
 import sys
 import time
 import argparse
@@ -94,7 +95,7 @@ def get_args():
     parser.add_argument(
         "--ckpt-name",
         type=str,
-        default="bdaii/two_arm_threading-lrenaux/diffpo-2jkfbrtz-pnb9crec:v4",
+        default="bdaii/two_arm_threading-lrenaux/diffpo-e8jwrx3m-uay94zwk:v4",
     )
     parser.add_argument(
         "--exp_name",
@@ -219,7 +220,8 @@ if __name__ == "__main__":
         deterministic=True,
         render=False,  # rendering in eval slows things down a lot
         save_to_wandb=True,
-        run_id = run.id
+        run_id = run.id,
+        n_eval_episodes=5
     )
     # wandb callback
     train_record_freq = 5000

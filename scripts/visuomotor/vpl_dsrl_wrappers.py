@@ -1,40 +1,30 @@
+import os
+os.environ["MUJOCO_GL"] = "egl"
 import torch
+import time
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 from numpy import typing as npt
 from typing import Deque
 from einops import rearrange
-from collections import defaultdict, defaultdict
+from collections import defaultdict
 from visuomotor.data.utils import create_key_to_history_mapping
 from collections import deque as _dq
 
 import robomimic.utils.env_utils as EnvUtils
 import robomimic.utils.obs_utils as ObsUtils
+import wandb  # optional logging
 from stable_baselines3.common.vec_env import VecEnvWrapper
 from scripts.visuomotor.build_dmg_env import get_env_metadata_from_dataset
-
-# import time
-# import torch
-# from contextlib import contextmanager
-
-# @contextmanager
-# def timer(use_cuda=False):
-#     if use_cuda:
-#         torch.cuda.synchronize()
-#     t0 = time.perf_counter()
-#     yield lambda: (time.perf_counter() - t0)  # gives you a function to call for elapsed time
-#     if use_cuda:
-#         torch.cuda.synchronize()
 
 
 class ActionChunkWrapper(gym.Env):
     """Execute a chunk (sequence) of low-level actions in one step.
     The exposed action space is the underlying env.action_space repeated 'act_steps' times.
     """
-    def __init__(self, env, cfg, max_episode_steps=300):
+    def __init__(self, env, cfg):
         self.env = env
-        self.max_episode_steps = max_episode_steps
         self.act_steps = int(cfg.data.horizon)
 
         base_low = env.action_space.low
@@ -57,6 +47,7 @@ class ActionChunkWrapper(gym.Env):
 
     def reset(self, seed=None):
         obs = self.env.reset(seed=seed)
+        self.success = {metric: [False] for metric in self.env.is_success()}
         self.count = 0
         return obs, {}
 
@@ -68,17 +59,21 @@ class ActionChunkWrapper(gym.Env):
         done_ = []
         info_ = []
         done_i = False
+        
         for i in range(self.action_execution_steps):
             self.count += 1
             obs_i, reward_i, done_i, info_i = self.env.step(action[i])
+            self.is_success()
             obs_.append(obs_i)
             reward_.append(reward_i)
             done_.append(done_i)
             info_.append(info_i)
+
         obs = obs_[-1]
         reward = sum(reward_)
         done = np.max(done_)
         info = info_[-1]
+        info["is_success"] = self.is_success()
         if self.count >= self.max_episode_steps:
             done = True
         if done:
@@ -90,6 +85,41 @@ class ActionChunkWrapper(gym.Env):
 
     def close(self):
         return
+
+    def is_success(self) -> bool | list[bool]:
+        cur_success_metrics = self.env.is_success()
+        for metric in self.success:
+            cur_success_metrics[metric] = [cur_success_metrics[metric]]
+            self.success[metric] = [
+                a or b for a, b in zip(self.success[metric], cur_success_metrics[metric], strict=True)
+            ]
+        return self.success
+
+
+def timed(name: str, cuda: bool = True):
+    """Decorator to measure execution time of instance methods and store on self._timings.
+    Args:
+        name: key under self._timings to accumulate (last value stored; could extend to avg).
+        cuda: synchronize CUDA for more accurate timing when GPU present.
+    """
+    def _decorator(fn):
+        def _wrapped(self, *args, **kwargs):
+            if not hasattr(self, '_timings'):
+                self._timings = {}
+            if cuda and torch.cuda.is_available():
+                torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            result = fn(self, *args, **kwargs)
+            if cuda and torch.cuda.is_available():
+                torch.cuda.synchronize()
+            dt = time.perf_counter() - t0
+            self._timings[name] = dt
+            return result
+        return _wrapped
+    return _decorator
+
+TIMING_ENABLED: bool = False  # Global switch for all timing & logging. Set False to disable all timing overhead & wandb logs.
+TIMING_LOG_INTERVAL: int = 10  # Log timing metrics every N calls to step_async. Increase to reduce overhead / noise.
 
 
 class VPLPolicyEnvWrapper(VecEnvWrapper):
@@ -105,7 +135,8 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         self.device = "cuda:0"
         self.base_policy = base_policy
         self.base_policy.eval()
-        self.obs = None # stores the last obs
+        self.obs = None  # stores the last obs
+        self._step_counter = 0
 
         # define action space
         mag = 3 # for sufficient support on a gaussian
@@ -175,8 +206,14 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         self.image_keys = sorted([f"{camera_name}_image" for camera_name in env_metadata["env_kwargs"]["camera_names"]])  
 
 
+    @timed('inference_s')
     def step_async(self, actions):
         obs = self.obs
+        # reset per-cycle timings (env & encode measured elsewhere)
+        if not hasattr(self, '_timings'):
+            self._timings = {}
+        self._timings.setdefault('env_step_s', 0.0)
+        self._timings.setdefault('encode_obs_s', 0.0)
         # actions = torch.as_tensor(actions, device=self.device, dtype=torch.float32)
         # n_envs = actions.shape[0]
         # mode = self.init_noise_mode
@@ -190,11 +227,17 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         
         actions = None # for testing
         diffused_actions = self.predict_vpl_action(obs, noise=actions)
+        t_dispatch0 = time.perf_counter()
         self.venv.step_async(diffused_actions)
+        self._timings['dispatch_overhead_s'] = time.perf_counter() - t_dispatch0
 
     def step_wait(self):
+        t_env0 = time.perf_counter()
         obs, rewards, dones, infos = self.venv.step_wait()
-        obs = self.encode_obs(obs, batched=self.batched) # encode for diffpo
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        self._timings['env_step_s'] = time.perf_counter() - t_env0
+        obs = self.encode_obs(obs, batched=self.batched) # encode for diffpo (timed via decorator)
         self.obs = obs
         obs_out = self.fuse_feats(obs) # for SAC
         # return obs_out.detach().cpu().numpy(), rewards, dones, infos
@@ -204,6 +247,17 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
             # temporary
             if "terminal_observation" in info and not isinstance(info["terminal_observation"], np.ndarray):
                 info.pop("terminal_observation")
+        # --- wandb logging ---
+        self._step_counter += 1
+        if TIMING_ENABLED and wandb is not None and wandb.run is not None and (self._step_counter % TIMING_LOG_INTERVAL == 0):
+            wandb.log({
+                'timing/inference_s': self._timings.get('inference_s', 0.0),
+                'timing/env_step_s': self._timings.get('env_step_s', 0.0),
+                'timing/encode_obs_s': self._timings.get('encode_obs_s', 0.0),
+                'timing/predict_vpl_action_s': self._timings.get('predict_vpl_action_s', 0.0),
+                'timing/dispatch_overhead_s': self._timings.get('dispatch_overhead_s', 0.0),
+                'timing/step': self._step_counter,
+            })
         return np.array([1]), rewards, dones, infos
     
 
@@ -212,7 +266,8 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         obs = self.encode_obs(obs, batched=self.batched) # encode for diffpo
         self.obs = obs
         obs_out = self.fuse_feats(obs) # for SAC
-        # return obs_out.detach().cpu().numpy()
+        if TIMING_ENABLED and wandb.run is not None and hasattr(self, '_timings'):
+            wandb.log({'timing/encode_obs_s': self._timings.get('encode_obs_s', 0.0), 'timing/step': self._step_counter})
         return np.array([1])
  
     # Modified from MimicgenActor
@@ -225,6 +280,7 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         return self.base_policy.head._fuse_features(features)
 
     @torch.no_grad()
+    @timed('encode_obs_s')
     def encode_obs(self, obs: dict[str, npt.NDArray | torch.Tensor], batched: bool = False) -> npt.NDArray:
         # If a single observation dict is provided, expand to history deque
         bp = self.base_policy
@@ -241,6 +297,7 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         return features
 
     @torch.no_grad()
+    @timed('predict_vpl_action_s')
     def predict_vpl_action(self, features: dict[str, npt.NDArray | torch.Tensor], noise=None) -> npt.NDArray:
         # additionally handle batch inference
         bp = self.base_policy
