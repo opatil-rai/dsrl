@@ -195,7 +195,7 @@ if __name__ == "__main__":
     env = SubprocVecEnv(env_fns) if n_env > 1 else DummyVecEnv(env_fns)
     eval_env = SubprocVecEnv(eval_env_fns) if n_eval_envs > 1 else DummyVecEnv(eval_env_fns)
     setattr(eval_env, "render_mode", "rgb_array")
-    eval_freq = 1
+    eval_freq = 1000
     eval_env = VecVideoRecorder(
         eval_env,
         f"videos/{run.id}/eval",

@@ -38,7 +38,7 @@ class ActionChunkWrapper(gym.Env):
         self.observation_space = env.observation_space
         self.count = 0
 
-        self.num_steps = cfg.simulation.get("num_steps", 100)
+        self.num_steps = cfg.simulation.envs[0].get("num_steps", 400)
         self.num_episodes = cfg.simulation.get("num_episodes", 10) // cfg.simulation.get(
             "ray_parallel_actors", 1
         )
@@ -74,7 +74,7 @@ class ActionChunkWrapper(gym.Env):
         done = np.max(done_)
         info = info_[-1]
         info["is_success"] = self.is_success()
-        if self.count >= self.max_episode_steps:
+        if self.count >= self.num_steps:
             done = True
         if done:
             info['terminal_observation'] = obs
@@ -93,7 +93,7 @@ class ActionChunkWrapper(gym.Env):
             self.success[metric] = [
                 a or b for a, b in zip(self.success[metric], cur_success_metrics[metric], strict=True)
             ]
-        return self.success
+        return self.success["task"]
 
 
 def timed(name: str, cuda: bool = True):
@@ -132,6 +132,7 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         self.action_dim = self.config.action_head.action_dim
         self.init_noise_mode = init_noise_mode  # controls initial noise dimensionality fed to diffusion
         self.env = env
+        self.num_envs = self.env.num_envs # multi-processed envs
         self.device = "cuda:0"
         self.base_policy = base_policy
         self.base_policy.eval()
@@ -154,8 +155,8 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         # define obs space
         self.obs_dim = self.config.action_head.input_dim
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
-            # low=-np.inf, high=np.inf, shape=(self.obs_dim,), dtype=np.float32
+            # low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(self.obs_dim,), dtype=np.float32
         )
         
         # ----  mirrors SimulationBase ----
@@ -167,7 +168,6 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         self.metadata_gcs_prefix = self.config.simulation.metadata_gcs_prefix
         self.abs_action = self.config.simulation.get("abs_action", False)
         self.env_name = self.config.simulation.envs[self.task_index]["name"]
-        self.num_envs = self.config.simulation.get("num_envs_per_actor", 1)
         self.obs_visual = self.config.data.obs_keys.get("visual", list())
         self.obs_state = self.config.data.obs_keys.get("state", dict())
 
@@ -214,18 +214,18 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
             self._timings = {}
         self._timings.setdefault('env_step_s', 0.0)
         self._timings.setdefault('encode_obs_s', 0.0)
-        # actions = torch.as_tensor(actions, device=self.device, dtype=torch.float32)
-        # n_envs = actions.shape[0]
-        # mode = self.init_noise_mode
-        # if mode == 'unit':
-        #     actions = actions.view(n_envs, 1, 1).repeat(1, self.action_horizon, self.action_dim)
-        # elif mode == 'action_dim':
-        #     actions = actions.view(n_envs, 1, self.action_dim).repeat(1, self.action_horizon, 1)
-        # else:  # full flattened or already shaped
-        #     if actions.ndim == 2:
-        #         actions = actions.view(n_envs, self.action_horizon, self.action_dim)
+        actions = torch.as_tensor(actions, device=self.device, dtype=torch.float32)
+        n_envs = actions.shape[0]
+        mode = self.init_noise_mode
+        if mode == 'unit':
+            actions = actions.view(n_envs, 1, 1).repeat(1, self.action_horizon, self.action_dim)
+        elif mode == 'action_dim':
+            actions = actions.view(n_envs, 1, self.action_dim).repeat(1, self.action_horizon, 1)
+        else:  # full flattened or already shaped
+            if actions.ndim == 2:
+                actions = actions.view(n_envs, self.action_horizon, self.action_dim)
         
-        actions = None # for testing
+        # actions = None # for testing
         diffused_actions = self.predict_vpl_action(obs, noise=actions)
         t_dispatch0 = time.perf_counter()
         self.venv.step_async(diffused_actions)
@@ -240,10 +240,9 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         obs = self.encode_obs(obs, batched=self.batched) # encode for diffpo (timed via decorator)
         self.obs = obs
         obs_out = self.fuse_feats(obs) # for SAC
-        # return obs_out.detach().cpu().numpy(), rewards, dones, infos
 
         for info in infos:
-            info["is_success"] = bool(info["is_success"]['task'])
+            # info["is_success"] = bool(info["is_success"]['task'])
             # temporary
             if "terminal_observation" in info and not isinstance(info["terminal_observation"], np.ndarray):
                 info.pop("terminal_observation")
@@ -258,7 +257,8 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
                 'timing/dispatch_overhead_s': self._timings.get('dispatch_overhead_s', 0.0),
                 'timing/step': self._step_counter,
             })
-        return np.array([1]), rewards, dones, infos
+        return obs_out.detach().cpu().numpy(), rewards, dones, infos
+        # return np.expand_dims(np.array([1]*self.num_envs), axis=1), rewards, dones, infos
     
 
     def reset(self):
@@ -268,13 +268,14 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         obs_out = self.fuse_feats(obs) # for SAC
         if TIMING_ENABLED and wandb.run is not None and hasattr(self, '_timings'):
             wandb.log({'timing/encode_obs_s': self._timings.get('encode_obs_s', 0.0), 'timing/step': self._step_counter})
-        return np.array([1])
+        # return np.expand_dims(np.array([1]*self.num_envs), axis=1)
+        return obs_out.detach().cpu().numpy()
  
     # Modified from MimicgenActor
     @property
     def batched(self) -> bool:
         # return self.env.num_envs > 1
-        return True
+        return True # always batched for vpl as even when n_envs=1, there is a batch dim
 
     def fuse_feats(self, features: dict[str, npt.NDArray | torch.Tensor]) -> npt.NDArray:
         return self.base_policy.head._fuse_features(features)
