@@ -1,6 +1,5 @@
 """
-TODO:
-- Also consider observation history (ActionChunkWrapper)
+TODO: Also consider observation history (ActionChunkWrapper)
 """
 
 import os
@@ -93,9 +92,9 @@ class VideoRecorderCallback(BaseCallback):
 def get_args():
     parser = argparse.ArgumentParser(description="Training DSRL SAC for VPL")
     parser.add_argument(
-        "--ckpt-name",
+        "--task-name",
         type=str,
-        default="bdaii/two_arm_threading-lrenaux/diffpo-e8jwrx3m-uay94zwk:v4",
+        default="two_arm_threading",
     )
     parser.add_argument(
         "--exp_name",
@@ -138,10 +137,20 @@ def get_args():
     return parser.parse_args()
 
 
+pretrained_policies = {
+    "two_arm_drawer_cleanup": "bdaii/two_arm_drawer_cleanup-lrenaux/runs/diffpo-infgcmfb-8yhbzmqy",
+    "two_arm_lift_tray": "bdaii/two_arm_lift_tray-lrenaux/runs/diffpo-p2xvpiry-vf24t7f7:v4",
+    "two_arm_transport": "bdaii/two_arm_transport-lrenaux/runs/diffpo-0gvai0kn-gjidrqcr:v4",
+    "two_arm_three_piece_assembly": "bdaii/two_arm_three_piece_assembly-lrenaux/runs/diffpo-gu07owxr-aqppcwd5:v4",
+    "two_arm_threading": "bdaii/two_arm_threading-lrenaux/runs/diffpo-e8jwrx3m-uay94zwk:v4"
+}
+
 if __name__ == "__main__":
     args = get_args()
     seed = args.seeds[0]
-    ckpt_name = args.ckpt_name
+    task_name = args.task_name
+    ckpt_name = pretrained_policies[task_name]
+    print(">>> Using checkpoint:", ckpt_name)
     n_env = args.n_envs
     n_eval_envs = args.n_eval_envs
 
@@ -173,7 +182,7 @@ if __name__ == "__main__":
     # Prepare a picklable config dict for worker factories (avoid capturing heavy objects like policy)
     from omegaconf import OmegaConf
     cfg_dict = OmegaConf.to_container(policy.config, resolve=True)
-    dataset_path = "/lam-248-lambdafs/teams/proj-compose/opatil/datasets/two_arm_threading.hdf5"
+    dataset_path = f"/lam-248-lambdafs/teams/proj-compose/opatil/datasets/{task_name}.hdf5"
 
     def make_env_fn(cfg_d):
         def _thunk():
@@ -255,3 +264,4 @@ if __name__ == "__main__":
                 callback=callback
                 )
     run.finish()
+

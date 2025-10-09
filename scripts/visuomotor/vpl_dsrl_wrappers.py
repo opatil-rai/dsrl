@@ -2,6 +2,7 @@ import os
 os.environ["MUJOCO_GL"] = "egl"
 import torch
 import time
+import wandb
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -9,15 +10,15 @@ from numpy import typing as npt
 from typing import Deque
 from einops import rearrange
 from collections import defaultdict
-from visuomotor.data.utils import create_key_to_history_mapping
 from collections import deque as _dq
 
 import robomimic.utils.env_utils as EnvUtils
 import robomimic.utils.obs_utils as ObsUtils
-import wandb  # optional logging
 from stable_baselines3.common.vec_env import VecEnvWrapper
+from visuomotor.data.utils import create_key_to_history_mapping
 from scripts.visuomotor.build_dmg_env import get_env_metadata_from_dataset
 
+IGNORE_SAC = bool(os.getenv("IGNORE_SAC", 0)) # ignores sac outputs for debugging
 
 class ActionChunkWrapper(gym.Env):
     """Execute a chunk (sequence) of low-level actions in one step.
@@ -140,7 +141,7 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         self._step_counter = 0
 
         # define action space
-        mag = 3 # for sufficient support on a gaussian
+        mag = 1 # for sufficient support on a gaussian
         if init_noise_mode == 'unit':
             low = -mag * np.ones(1)
             high = mag * np.ones(1)
@@ -205,6 +206,8 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         visual_obs_shapes = self.get_visual_obs_shapes(env_metadata["env_kwargs"]["camera_names"])
         self.image_keys = sorted([f"{camera_name}_image" for camera_name in env_metadata["env_kwargs"]["camera_names"]])  
 
+        if IGNORE_SAC:
+            print(">>> IGNORE_SAC is set; SAC actions will be ignored and random noise passed to VPL")
 
     @timed('inference_s')
     def step_async(self, actions):
@@ -224,8 +227,9 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         else:  # full flattened or already shaped
             if actions.ndim == 2:
                 actions = actions.view(n_envs, self.action_horizon, self.action_dim)
-        
-        # actions = None # for testing
+
+        if IGNORE_SAC:
+            actions = None # for testing
         diffused_actions = self.predict_vpl_action(obs, noise=actions)
         t_dispatch0 = time.perf_counter()
         self.venv.step_async(diffused_actions)
