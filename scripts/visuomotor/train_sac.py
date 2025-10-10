@@ -15,7 +15,6 @@ from random import random
 from datetime import datetime
 import lightning as L
 from stable_baselines3 import SAC
-from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecVideoRecorder
 from stable_baselines3.common.callbacks import CallbackList, EvalCallback
@@ -138,11 +137,11 @@ def get_args():
 
 
 pretrained_policies = {
-    "two_arm_drawer_cleanup": "bdaii/two_arm_drawer_cleanup-lrenaux/runs/diffpo-infgcmfb-8yhbzmqy",
-    "two_arm_lift_tray": "bdaii/two_arm_lift_tray-lrenaux/runs/diffpo-p2xvpiry-vf24t7f7:v4",
-    "two_arm_transport": "bdaii/two_arm_transport-lrenaux/runs/diffpo-0gvai0kn-gjidrqcr:v4",
-    "two_arm_three_piece_assembly": "bdaii/two_arm_three_piece_assembly-lrenaux/runs/diffpo-gu07owxr-aqppcwd5:v4",
-    "two_arm_threading": "bdaii/two_arm_threading-lrenaux/runs/diffpo-e8jwrx3m-uay94zwk:v4"
+    "two_arm_drawer_cleanup": r"bdaii/two_arm_drawer_cleanup-lrenaux/diffpo-infgcmfb-8yhbzmqy:v4",
+    "two_arm_lift_tray": r"bdaii/two_arm_lift_tray-lrenaux/diffpo-p2xvpiry-vf24t7f7:v4",
+    "two_arm_transport": r"bdaii/two_arm_transport-lrenaux/diffpo-0gvai0kn-gjidrqcr:v4",
+    "two_arm_three_piece_assembly": r"bdaii/two_arm_three_piece_assembly-lrenaux/diffpo-gu07owxr-aqppcwd5:v4",
+    "two_arm_threading": r"bdaii/two_arm_threading-lrenaux/diffpo-e8jwrx3m-uay94zwk:v4"
 }
 
 if __name__ == "__main__":
@@ -161,7 +160,7 @@ if __name__ == "__main__":
 
     run = wandb.init(
         project="dsrl_env",
-        name='_'.join([args.exp_name,str(datetime.now())]),
+        name='_'.join([args.task_name, args.exp_name, str(datetime.now())]),
         sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
         monitor_gym=True,  # auto-upload the videos of agents playing the game
         # save_code=True,  # optional
@@ -184,25 +183,36 @@ if __name__ == "__main__":
     cfg_dict = OmegaConf.to_container(policy.config, resolve=True)
     dataset_path = f"/lam-248-lambdafs/teams/proj-compose/opatil/datasets/{task_name}.hdf5"
 
-    def make_env_fn(cfg_d):
-        def _thunk():
-            from omegaconf import OmegaConf as _OC
-            local_cfg = _OC.create(cfg_d)
-            env = build_dmg_env(
-                env_type="dexmimicgen",
-                dataset_path=dataset_path,
-                config=local_cfg,       
-            )
-            env = ActionChunkWrapper(env, local_cfg)
-            # env = TimeLimit(env, max_episode_steps=50)
-            return Monitor(env)
-        return _thunk
+    # --- Use SB3 make_vec_env instead of manual env_fns lists ---
+    def _single_env_factory():
+        from omegaconf import OmegaConf as _OC
+        local_cfg = _OC.create(cfg_dict)
+        _env = build_dmg_env(
+            env_type="dexmimicgen",
+            dataset_path=dataset_path,
+            config=local_cfg,
+        )
+        _env = ActionChunkWrapper(_env, local_cfg)
+        return _env
 
-    env_fns = [make_env_fn(cfg_dict) for _ in range(n_env)]
-    eval_env_fns = [make_env_fn(cfg_dict) for _ in range(n_eval_envs)]
+    # make_vec_env accepts a callable that returns an Env; choose VecEnv class based on n_env
+    vec_cls_train = SubprocVecEnv if n_env > 1 else DummyVecEnv
+    env = make_vec_env(
+        _single_env_factory,
+        n_envs=n_env,
+        seed=seed,
+        vec_env_cls=vec_cls_train,
+        monitor_dir=f"runs/{run.id}/monitor/train",
+    )
 
-    env = SubprocVecEnv(env_fns) if n_env > 1 else DummyVecEnv(env_fns)
-    eval_env = SubprocVecEnv(eval_env_fns) if n_eval_envs > 1 else DummyVecEnv(eval_env_fns)
+    vec_cls_eval = SubprocVecEnv if n_eval_envs > 1 else DummyVecEnv
+    eval_env = make_vec_env(
+        _single_env_factory,
+        n_envs=n_eval_envs,
+        seed=seed + 1619,  # offset seed so eval workers differ
+        vec_env_cls=vec_cls_eval,
+        monitor_dir=f"runs/{run.id}/monitor/eval",
+    )
     setattr(eval_env, "render_mode", "rgb_array")
     eval_freq = 1000
     eval_env = VecVideoRecorder(

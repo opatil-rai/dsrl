@@ -1,8 +1,11 @@
 """
 Modified from visuomotor/mimicgen_actor.py.
 How things flow:
-MujocoEnv -> ... -> TwoArmThreadingEnv (Dexmimicgen) -> RobosuiteEnv (Robomimic) -> DexMimicGenEnv (VPLSimulationBase; Optional) -> DMGEnvWrapper
+MujocoEnv -> ... -> TwoArmThreadingEnv (Dexmimicgen) -> RobosuiteEnv (Robomimic) -> DexMimicGenEnv (VPLSimulationBase; Optional) -> DMGEnvWrapper (Gym Wrapper)
 - is_success returns { "task" : succ } from RobosuiteEnv, that internally calls _check_success => done is just a progress indicator
+- step/_pre_action/_post_action are only defined in MujocoEnv(Robosuite) and then in EnvRobosuite(Robomimic).
+    - EnvRobosuite ignores done in MujocoEnv -> there is no truncation or termination -> done=False always
+    - EnvRobosuite adds info["is_success"] = self._check_success() to info dict returned by step.
 """
 
 import json
@@ -94,15 +97,16 @@ class DMGEnvWrapper(gym.Env):
         if self.dummy:
             for observation_name, shape in self.visual_obs_shapes.items():
                 obs[observation_name] = np.zeros(shape)
-        return obs
+        return obs  
 
+    # Returns 4-tuple unline 5-tuple returned by gym Env
     def step(self, *args: Any) -> tuple[dict, float, dict, bool]:
-        obs, reward, info, done = self.env.step(*args)
+        obs, reward, done, info = self.env.step(*args)
         if self.dummy:
             for observation_name, shape in self.visual_obs_shapes.items():
                 obs[observation_name] = np.zeros(shape)
 
-        return obs, reward, info, done
+        return obs, reward, done, info
 
     def render(self, mode: str = "rgb_array"):
         """Return an RGB array (H,W,3) for video recording."""
@@ -118,7 +122,7 @@ class DMGEnvWrapper(gym.Env):
         return None
 
 def get_env_metadata_from_dataset(dataset_path, ds_format="robomimic"):
-    """s
+    """
     Retrieves env metadata from dataset.
 
     Args:

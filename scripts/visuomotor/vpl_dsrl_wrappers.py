@@ -74,12 +74,10 @@ class ActionChunkWrapper(gym.Env):
         reward = sum(reward_)
         done = np.max(done_)
         info = info_[-1]
-        info["is_success"] = self.is_success()
+        info["is_success"] = self.is_success() # override the is_success set by EnvRobosuite
         if self.count >= self.num_steps:
-            done = True
-        if done:
-            info['terminal_observation'] = obs
-        return obs, reward, done, False, info
+            done = True # this is the first place in the env chain where done can be set to True
+        return obs, reward, done, False, info # converts 4-tuple to 5-tuple expected of gym Envs
 
     def render(self):
         return self.env.render()
@@ -101,7 +99,7 @@ def timed(name: str, cuda: bool = True):
     """Decorator to measure execution time of instance methods and store on self._timings.
     Args:
         name: key under self._timings to accumulate (last value stored; could extend to avg).
-        cuda: synchronize CUDA for more accurate timing when GPU present.
+        cuda: synchronize CUDA for more accur0ate timing when GPU present.
     """
     def _decorator(fn):
         def _wrapped(self, *args, **kwargs):
@@ -141,7 +139,7 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         self._step_counter = 0
 
         # define action space
-        mag = 1 # for sufficient support on a gaussian
+        mag = 2 # for sufficient support on a gaussian
         if init_noise_mode == 'unit':
             low = -mag * np.ones(1)
             high = mag * np.ones(1)
@@ -244,12 +242,8 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         obs = self.encode_obs(obs, batched=self.batched) # encode for diffpo (timed via decorator)
         self.obs = obs
         obs_out = self.fuse_feats(obs) # for SAC
+        obs_out = obs_out.detach().cpu().numpy()
 
-        for info in infos:
-            # info["is_success"] = bool(info["is_success"]['task'])
-            # temporary
-            if "terminal_observation" in info and not isinstance(info["terminal_observation"], np.ndarray):
-                info.pop("terminal_observation")
         # --- wandb logging ---
         self._step_counter += 1
         if TIMING_ENABLED and wandb is not None and wandb.run is not None and (self._step_counter % TIMING_LOG_INTERVAL == 0):
@@ -261,7 +255,10 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
                 'timing/dispatch_overhead_s': self._timings.get('dispatch_overhead_s', 0.0),
                 'timing/step': self._step_counter,
             })
-        return obs_out.detach().cpu().numpy(), rewards, dones, infos
+        for done_idx, done in enumerate(dones):
+            if done:
+                infos[done_idx]['terminal_observation'] = obs_out[done_idx]
+        return obs_out, rewards, dones, infos
         # return np.expand_dims(np.array([1]*self.num_envs), axis=1), rewards, dones, infos
     
 
