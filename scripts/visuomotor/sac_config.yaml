@@ -1,0 +1,17 @@
+train:
+  tau: 0.005            # Target network update rate
+  actor_lr: 3.0e-4       # Actor learning rate
+  batch_size: 256        # Replay buffer sample batch size
+  train_freq: 1          # Env steps between each update
+  utd: 20                # Gradient steps per update (update-to-data ratio)
+  use_layer_norm: true   # Whether to apply LayerNorm after linear layers
+  layer_size: 128        # Hidden layer size for actor and critic
+  num_layers: 3          # Number of hidden layers for actor and critic
+  discount: 0.99         # Gamma discount factor
+  ent_coef: auto         # -1 in original snippet -> use automatic entropy tuning
+  target_ent: 0.0        # Target entropy override (optional)
+  learning_starts: 20001 # Initial random (or base policy) rollout steps before updates
+  action_magnitude: 1    # Max action magnitude in noise action space (informational)
+  n_critics: 2           # Number of critic networks
+  critic_backup_combine_type: min # Combining strategy for critic backup
+  log_std_init: 0.0      # Initial log std for Gaussian policy

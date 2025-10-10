@@ -10,16 +10,19 @@ import argparse
 import torch
 import glob
 import copy
+import yaml
 import numpy as np
 from random import random
 from datetime import datetime
 import lightning as L
+from types import SimpleNamespace as _SNS
+from gymnasium.wrappers import TimeLimit, RescaleAction, FlattenObservation
+
 from stable_baselines3 import SAC
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecVideoRecorder
 from stable_baselines3.common.callbacks import CallbackList, EvalCallback
 from stable_baselines3.common.callbacks import BaseCallback
-from gymnasium.wrappers import TimeLimit, RescaleAction, FlattenObservation
 
 # os.environ["WANDB_MODE"]="disabled"
 os.environ["WANDB_INIT_TIMEOUT"]="600"
@@ -225,9 +228,50 @@ if __name__ == "__main__":
     env = VPLPolicyEnvWrapper(env, policy, init_noise_mode=args.noise_factorization, dataset_path=dataset_path)
     eval_env = VPLPolicyEnvWrapper(eval_env, policy, init_noise_mode=args.noise_factorization, dataset_path=dataset_path)
 
-    sac_config = {"policy": "MlpPolicy", "learning_rate": 0.001}
-    model = SAC(env=env, verbose=1, tensorboard_log=f"runs/{run.id}",
-                **sac_config)
+    # Build cfg namespace for user-specified SAC parameters
+    cfg_path = os.path.join(os.path.dirname(__file__), "sac_config.yaml")
+    with open(cfg_path, "r") as f:
+        sac_cfg = yaml.safe_load(f)["train"]
+    train_cfg = _SNS(**sac_cfg)
+    logdir = f"runs/{run.id}"
+    cfg = _SNS(train=train_cfg, logdir=logdir)
+
+    # Policy architecture (shared for actor and critic)
+    post_linear_modules = None
+    if cfg.train.use_layer_norm:
+        post_linear_modules = [torch.nn.LayerNorm]
+    net_arch = [cfg.train.layer_size for _ in range(cfg.train.num_layers)]
+    policy_kwargs = dict(
+        net_arch=dict(pi=net_arch, qf=net_arch),
+        activation_fn=torch.nn.Tanh,
+        log_std_init=getattr(cfg.train, "log_std_init", 0.0),
+        post_linear_modules=post_linear_modules,
+        n_critics=cfg.train.n_critics,
+    )
+
+    # Instantiate SAC with provided parameter set
+    model = SAC(
+        "MlpPolicy",
+        env,
+        learning_rate=cfg.train.actor_lr,
+        buffer_size=20_000_000,
+        learning_starts=1,
+        batch_size=cfg.train.batch_size,
+        tau=cfg.train.tau,
+        gamma=cfg.train.discount,
+        train_freq=cfg.train.train_freq,
+        gradient_steps=cfg.train.utd,
+        action_noise=None,
+        optimize_memory_usage=False,
+        ent_coef="auto" if cfg.train.ent_coef == -1 else cfg.train.ent_coef,
+        target_update_interval=1,
+        target_entropy="auto" if cfg.train.target_ent == -1 else cfg.train.target_ent,
+        use_sde=False,
+        sde_sample_freq=-1,
+        tensorboard_log=cfg.logdir,
+        verbose=1,
+        policy_kwargs=policy_kwargs,
+    )
 
     train_record_freq = 5000
     # eval callback
@@ -269,7 +313,7 @@ if __name__ == "__main__":
     # all callbacks together
     callback = CallbackList([eval_callback, wandb_callback, train_video_callback, eval_video_callback])
 
-    total_timesteps = 1e6
+    total_timesteps = 20e6
     model.learn(total_timesteps=total_timesteps,
                 callback=callback
                 )

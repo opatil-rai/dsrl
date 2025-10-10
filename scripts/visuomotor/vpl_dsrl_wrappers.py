@@ -70,14 +70,23 @@ class ActionChunkWrapper(gym.Env):
             done_.append(done_i)
             info_.append(info_i)
 
+        # Aggregate final step outputs
         obs = obs_[-1]
-        reward = sum(reward_)
-        done = np.max(done_)
+        reward = float(np.sum(reward_))
         info = info_[-1]
-        info["is_success"] = self.is_success() # override the is_success set by EnvRobosuite
+        success = self.is_success()
+        info["is_success"] = success  # override env-provided success metric
+
+        terminated = bool(success)
+        truncated = False
         if self.count >= self.num_steps:
-            done = True # this is the first place in the env chain where done can be set to True
-        return obs, reward, done, False, info # converts 4-tuple to 5-tuple expected of gym Envs
+            truncated = True
+            info["TimeLimit.truncated"] = True
+
+        # done = True is not set upwards in the env chain
+        if np.max(done_):
+            terminated = True
+        return obs, reward, terminated, truncated, info
 
     def render(self):
         return self.env.render()
@@ -139,7 +148,7 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         self._step_counter = 0
 
         # define action space
-        mag = 2 # for sufficient support on a gaussian
+        mag = 1 # for sufficient support on a gaussian
         if init_noise_mode == 'unit':
             low = -mag * np.ones(1)
             high = mag * np.ones(1)
@@ -157,6 +166,7 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
             # low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
             low=-np.inf, high=np.inf, shape=(self.obs_dim,), dtype=np.float32
         )
+        # self._constant_obs = np.zeros((self.num_envs, self.obs_dim), dtype=np.float32)
         
         # ----  mirrors SimulationBase ----
         self.task_index = 0
@@ -243,6 +253,7 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         self.obs = obs
         obs_out = self.fuse_feats(obs) # for SAC
         obs_out = obs_out.detach().cpu().numpy()
+        # obs_out = self._constant_obs
 
         # --- wandb logging ---
         self._step_counter += 1
@@ -267,9 +278,10 @@ class VPLPolicyEnvWrapper(VecEnvWrapper):
         obs = self.encode_obs(obs, batched=self.batched) # encode for diffpo
         self.obs = obs
         obs_out = self.fuse_feats(obs) # for SAC
+        # obs_out = self._constant_obs
         if TIMING_ENABLED and wandb.run is not None and hasattr(self, '_timings'):
             wandb.log({'timing/encode_obs_s': self._timings.get('encode_obs_s', 0.0), 'timing/step': self._step_counter})
-        # return np.expand_dims(np.array([1]*self.num_envs), axis=1)
+        # return obs_out
         return obs_out.detach().cpu().numpy()
  
     # Modified from MimicgenActor
